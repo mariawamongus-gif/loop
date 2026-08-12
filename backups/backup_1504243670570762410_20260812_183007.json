@@ -1,0 +1,307 @@
+{
+  "guild_name": "The Sanctuary",
+  "guild_id": 1504243670570762410,
+  "timestamp": "2026-08-12 18:30:07 UTC",
+  "roles": [
+    {
+      "name": "neon",
+      "color": 0,
+      "permissions": 8,
+      "hoist": false,
+      "mentionable": false
+    },
+    {
+      "name": "08.",
+      "color": 5592405,
+      "permissions": 2222085186637377,
+      "hoist": false,
+      "mentionable": false
+    },
+    {
+      "name": "🔵",
+      "color": 3447003,
+      "permissions": 0,
+      "hoist": false,
+      "mentionable": false
+    },
+    {
+      "name": "🟢",
+      "color": 327424,
+      "permissions": 0,
+      "hoist": false,
+      "mentionable": false
+    },
+    {
+      "name": "⚪",
+      "color": 0,
+      "permissions": 0,
+      "hoist": false,
+      "mentionable": false
+    },
+    {
+      "name": "⚫",
+      "color": 2104605,
+      "permissions": 0,
+      "hoist": false,
+      "mentionable": false
+    },
+    {
+      "name": "huge one",
+      "color": 9488,
+      "permissions": 2108854711615479,
+      "hoist": false,
+      "mentionable": false
+    },
+    {
+      "name": "nigga",
+      "color": 327680,
+      "permissions": 0,
+      "hoist": false,
+      "mentionable": false
+    },
+    {
+      "name": "mid one",
+      "color": 16738816,
+      "permissions": 1528187204324993,
+      "hoist": false,
+      "mentionable": false
+    },
+    {
+      "name": "small one",
+      "color": 12392218,
+      "permissions": 74769063382529,
+      "hoist": false,
+      "mentionable": false
+    },
+    {
+      "name": "Moder",
+      "color": 3066993,
+      "permissions": 1721826618638327,
+      "hoist": false,
+      "mentionable": true
+    },
+    {
+      "name": "Person",
+      "color": 1872607,
+      "permissions": 1720707884502593,
+      "hoist": false,
+      "mentionable": false
+    }
+  ],
+  "categories": [
+    {
+      "name": "Voice",
+      "position": 0
+    },
+    {
+      "name": "Life",
+      "position": 1
+    },
+    {
+      "name": "🎉 الفعاليات",
+      "position": 2
+    },
+    {
+      "name": "📋 المعلومات",
+      "position": 3
+    },
+    {
+      "name": "💬 العام",
+      "position": 4
+    },
+    {
+      "name": "🎫 الدعم",
+      "position": 5
+    },
+    {
+      "name": "🔧 الإدارة",
+      "position": 6
+    },
+    {
+      "name": "🎮 الألعاب",
+      "position": 7
+    }
+  ],
+  "channels": [
+    {
+      "name": "𝒓𝒖𝒍𝒆𝒔",
+      "type": "text",
+      "category": null,
+      "topic": null
+    },
+    {
+      "name": "𝒂𝒏𝒏𝒐𝒖𝒏𝒄𝒆𝒎𝒆𝒏𝒕𝒔",
+      "type": "text",
+      "category": null,
+      "topic": null
+    },
+    {
+      "name": "𝒆𝒗𝒆𝒏𝒕𝒔",
+      "type": "text",
+      "category": "Life",
+      "topic": null
+    },
+    {
+      "name": "𝒄𝒉𝒂𝒕",
+      "type": "text",
+      "category": "Life",
+      "topic": null
+    },
+    {
+      "name": "𝒈𝒂𝒎𝒊𝒏𝒈",
+      "type": "text",
+      "category": "Life",
+      "topic": null
+    },
+    {
+      "name": "bye",
+      "type": "text",
+      "category": "Life",
+      "topic": null
+    },
+    {
+      "name": "welcome",
+      "type": "text",
+      "category": "Life",
+      "topic": null
+    },
+    {
+      "name": "ticket-🎫",
+      "type": "text",
+      "category": null,
+      "topic": null
+    },
+    {
+      "name": "avrages-📊",
+      "type": "text",
+      "category": null,
+      "topic": null
+    },
+    {
+      "name": "streaks-☄️",
+      "type": "text",
+      "category": null,
+      "topic": null
+    },
+    {
+      "name": "ticket-replay-🔄",
+      "type": "text",
+      "category": null,
+      "topic": null
+    },
+    {
+      "name": "verification-🔐",
+      "type": "text",
+      "category": null,
+      "topic": null
+    },
+    {
+      "name": "welcome-08-👋",
+      "type": "text",
+      "category": null,
+      "topic": null
+    },
+    {
+      "name": "cmd-👨‍💻",
+      "type": "text",
+      "category": null,
+      "topic": null
+    },
+    {
+      "name": "levels-🏅",
+      "type": "text",
+      "category": null,
+      "topic": null
+    },
+    {
+      "name": "📜-القوانين",
+      "type": "text",
+      "category": "📋 المعلومات",
+      "topic": null
+    },
+    {
+      "name": "📢-الإعلانات",
+      "type": "text",
+      "category": "📋 المعلومات",
+      "topic": null
+    },
+    {
+      "name": "🤝-الشراكات",
+      "type": "text",
+      "category": "📋 المعلومات",
+      "topic": null
+    },
+    {
+      "name": "🌌-عام",
+      "type": "text",
+      "category": "💬 العام",
+      "topic": null
+    },
+    {
+      "name": "😂-ميمز",
+      "type": "text",
+      "category": "💬 العام",
+      "topic": null
+    },
+    {
+      "name": "🖼️-صور",
+      "type": "text",
+      "category": "💬 العام",
+      "topic": null
+    },
+    {
+      "name": "📩-افتح-تكت",
+      "type": "text",
+      "category": "🎫 الدعم",
+      "topic": null
+    },
+    {
+      "name": "📋-لوق-التكتات",
+      "type": "text",
+      "category": "🎫 الدعم",
+      "topic": null
+    },
+    {
+      "name": "📝-لوق-الأحداث",
+      "type": "text",
+      "category": "🔧 الإدارة",
+      "topic": null
+    },
+    {
+      "name": "🛡️-لوق-الحماية",
+      "type": "text",
+      "category": "🔧 الإدارة",
+      "topic": null
+    },
+    {
+      "name": "🎯-ماين-كرافت",
+      "type": "text",
+      "category": "🎮 الألعاب",
+      "topic": null
+    },
+    {
+      "name": "🏀-فورتنايت",
+      "type": "text",
+      "category": "🎮 الألعاب",
+      "topic": null
+    },
+    {
+      "name": "⚔️-كاونتر-سترايك",
+      "type": "text",
+      "category": "🎮 الألعاب",
+      "topic": null
+    },
+    {
+      "name": "🌌-عام",
+      "type": "text",
+      "category": null,
+      "topic": null
+    },
+    {
+      "name": "ticket-0005",
+      "type": "text",
+      "category": null,
+      "topic": null
+    }
+  ]
+}
