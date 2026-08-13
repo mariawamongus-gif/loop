@@ -10,7 +10,7 @@ class Config:
 
     # Google AI Studio API Settings (Primary AI Model)
     GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "").strip()
-    GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-1.5-flash").strip()
+    GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-2.5-flash").strip()
 
     # Fallback AI Settings
     OPENROUTER_API_KEY: str = os.getenv("OPENROUTER_API_KEY", "")

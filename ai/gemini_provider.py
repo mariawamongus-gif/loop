@@ -16,9 +16,16 @@ class GeminiProvider(AIProvider):
         if not api_key:
             raise RuntimeError("مفتاح Google AI Studio API Key غير متوفر.")
 
-        configured_model = (Config.GEMINI_MODEL or "gemini-2.0-flash").strip()
-        models_to_try = [configured_model, "gemini-2.0-flash", "gemini-1.5-flash-latest", "gemini-1.5-flash", "gemini-2.0-flash-exp"]
-        # إزالة التكرار مع الحفاظ على الترتيب
+        configured_model = (Config.GEMINI_MODEL or "gemini-2.5-flash").strip()
+        models_to_try = [
+            configured_model,
+            "gemini-2.5-flash",
+            "gemini-flash-latest",
+            "gemini-2.5-pro",
+            "gemini-pro-latest",
+            "gemini-2.5-flash-lite"
+        ]
+        
         seen = set()
         model_candidates = [m for m in models_to_try if not (m in seen or seen.add(m))]
 
