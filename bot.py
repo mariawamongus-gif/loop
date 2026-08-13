@@ -1,5 +1,5 @@
 import discord
-from discord.ext import commands
+from discord.ext import commands, tasks
 import asyncio
 import os
 import logging
@@ -52,19 +52,45 @@ class NeonBot(commands.Bot):
         except Exception as e:
             logging.error(f"فشل مزامنة الأوامر: {e}")
 
+    @tasks.loop(minutes=5)
+    async def update_presence_task(self):
+        """تحديث الحالة الحية للبوت بشكل دوري."""
+        if not self.is_ready():
+            return
+        total_members = sum(g.member_count or 0 for g in self.guilds)
+        total_guilds = len(self.guilds)
+        activities = [
+            discord.Activity(type=discord.ActivityType.watching, name=f"{total_members} عضو في {total_guilds} سيرفر"),
+            discord.Activity(type=discord.ActivityType.listening, name="/setup | Neon Engine v2.0"),
+            discord.Activity(type=discord.ActivityType.competing, name="Neon AI Intelligence System"),
+        ]
+        import random
+        await self.change_presence(
+            activity=random.choice(activities),
+            status=discord.Status.online
+        )
+
+    @update_presence_task.before_loop
+    async def before_presence(self):
+        await self.wait_until_ready()
+
     async def on_ready(self):
-        logging.info(f"==========================================")
-        logging.info(f"Neon Engine initialized. User: {self.user} (ID: {self.user.id})")
-        logging.info(f"Status: Active | Systems Operational.")
-        logging.info(f"==========================================")
+        total_members = sum(g.member_count or 0 for g in self.guilds)
+        logging.info(f"==================================================")
+        logging.info(f"Neon Engine v2.0 Initialized Successfully!")
+        logging.info(f"User: {self.user} (ID: {self.user.id})")
+        logging.info(f"Servers: {len(self.guilds)} | Total Members: {total_members}")
+        logging.info(f"Status: Active & Operational 🟢")
+        logging.info(f"==================================================")
+        if not self.update_presence_task.is_running():
+            self.update_presence_task.start()
 
 bot = NeonBot()
 
 if __name__ == "__main__":
     if not Config.DISCORD_TOKEN:
-        print("خطأ حرّج: لم يتم توفير DISCORD_TOKEN في ملف .env")
+        print("خطأ حرج: لم يتم توفير DISCORD_TOKEN في ملف .env")
     else:
         token_prefix = Config.DISCORD_TOKEN[:10] if len(Config.DISCORD_TOKEN) >= 10 else Config.DISCORD_TOKEN
         print(f"جاري الاتصال بـ Discord باستخدام التوكن المعرف (بدايته: {token_prefix}...)...")
         bot.run(Config.DISCORD_TOKEN)
-
