@@ -12,13 +12,16 @@ class GeminiProvider(AIProvider):
         return "Google AI Studio (Gemini)"
 
     async def generate_response(self, messages: List[Dict[str, str]], system_prompt: str) -> str:
-        if not Config.GEMINI_API_KEY:
+        api_key = (Config.GEMINI_API_KEY or "").strip()
+        if not api_key:
             raise RuntimeError("مفتاح Google AI Studio API Key غير متوفر.")
 
-        model = Config.GEMINI_MODEL or "gemini-1.5-flash"
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={Config.GEMINI_API_KEY}"
+        configured_model = (Config.GEMINI_MODEL or "gemini-2.0-flash").strip()
+        models_to_try = [configured_model, "gemini-2.0-flash", "gemini-1.5-flash-latest", "gemini-1.5-flash", "gemini-2.0-flash-exp"]
+        # إزالة التكرار مع الحفاظ على الترتيب
+        seen = set()
+        model_candidates = [m for m in models_to_try if not (m in seen or seen.add(m))]
 
-        # تحويل صيغة الرسائل لـ Gemini Format (user -> user, assistant -> model)
         contents = []
         for msg in messages:
             role = "user" if msg.get("role") == "user" else "model"
@@ -38,20 +41,26 @@ class GeminiProvider(AIProvider):
                 "parts": [{"text": system_prompt}]
             }
 
+        last_error = None
         async with aiohttp.ClientSession() as session:
-            async with session.post(url, json=payload, timeout=20) as resp:
-                if resp.status == 200:
-                    data = await resp.json()
-                    try:
-                        candidates = data.get("candidates", [])
-                        if candidates:
-                            parts = candidates[0].get("content", {}).get("parts", [])
-                            if parts:
-                                return parts[0].get("text", "")
-                    except Exception as e:
-                        logger.error(f"خطأ أثناء قراءة استجابة Gemini: {e}")
-                        raise RuntimeError(f"استجابة غير متوقعة من Gemini: {e}")
+            for model_name in model_candidates:
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
+                try:
+                    async with session.post(url, json=payload, timeout=20) as resp:
+                        if resp.status == 200:
+                            data = await resp.json()
+                            candidates = data.get("candidates", [])
+                            if candidates:
+                                parts = candidates[0].get("content", {}).get("parts", [])
+                                if parts:
+                                    return parts[0].get("text", "")
+                        
+                        error_text = await resp.text()
+                        logger.warning(f"نموذج {model_name} أرجع ({resp.status}): {error_text[:120]}")
+                        last_error = f"Status {resp.status}"
+                except Exception as e:
+                    logger.warning(f"خطأ أثناء طلب {model_name}: {e}")
+                    last_error = str(e)
+                    continue
 
-                error_text = await resp.text()
-                logger.error(f"فشل طلب Google AI Studio ({resp.status}): {error_text}")
-                raise RuntimeError(f"خطأ Google AI Studio API Status {resp.status}")
+        raise RuntimeError(f"فشلت كافة نماذج Gemini المتاحة ({last_error})")

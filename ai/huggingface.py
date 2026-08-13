@@ -13,8 +13,8 @@ class HuggingFaceProvider(AIProvider):
         return self._name
 
     async def generate_response(self, messages: List[Dict[str, str]], system_prompt: str) -> str:
-        api_key = Config.HUGGINGFACE_API_KEY.strip()
-        model = Config.HUGGINGFACE_MODEL.strip() or "mistralai/Mistral-7B-Instruct-v0.2"
+        api_key = (Config.HUGGINGFACE_API_KEY or "").strip()
+        model = (Config.HUGGINGFACE_MODEL or "mistralai/Mistral-7B-Instruct-v0.2").strip()
 
         if not api_key:
             raise ValueError("مفتاح HuggingFace API غير معرف في ملف .env.")

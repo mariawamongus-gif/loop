@@ -13,8 +13,8 @@ class OpenRouterProvider(AIProvider):
         return self._name
 
     async def generate_response(self, messages: List[Dict[str, str]], system_prompt: str) -> str:
-        api_key = Config.OPENROUTER_API_KEY.strip()
-        model = Config.OPENROUTER_MODEL.strip() or "meta-llama/llama-3.1-70b-instruct:free"
+        api_key = (Config.OPENROUTER_API_KEY or "").strip()
+        model = (Config.OPENROUTER_MODEL or "openrouter/auto").strip()
 
         if not api_key:
             raise ValueError("مفتاح OpenRouter API غير معرف في ملف .env.")
