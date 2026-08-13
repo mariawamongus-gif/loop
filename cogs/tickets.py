@@ -146,12 +146,21 @@ class OpenTicketView(discord.ui.View):
                     SupportTicket.status.in_(["OPEN", "ESCALATED"])
                 )
             )
-            if existing.scalars().first():
-                await interaction.response.send_message(
-                    "⚠️ لديك تذكرة مفتوحة بالفعل. أغلق التذكرة الحالية قبل فتح واحدة جديدة.",
-                    ephemeral=True
-                )
-                return
+            existing_ticket = existing.scalars().first()
+            if existing_ticket:
+                # التحقق ما إذا كانت القناة التابعة للتذكرة ما زالت موجودة فعلياً في السيرفر
+                chan = guild.get_channel(existing_ticket.channel_id)
+                if chan is not None:
+                    await interaction.response.send_message(
+                        f"⚠️ لديك تذكرة مفتوحة بالفعل في الروم: {chan.mention}. أغلق التذكرة الحالية قبل فتح واحدة جديدة.",
+                        ephemeral=True
+                    )
+                    return
+                else:
+                    # القناة غير موجودة على ديسكورد (تذكرة ميتة/محذوفة) -> إغلاقها آلياً وتنظيفها
+                    existing_ticket.status = "CLOSED"
+                    existing_ticket.closed_at = datetime.utcnow()
+                    await session.commit()
 
             ticket = SupportTicket(
                 guild_id=guild.id,

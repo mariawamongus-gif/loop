@@ -370,26 +370,34 @@ class ModerationCog(commands.Cog):
         )
 
     # ─── /case ────────────────────────────────────────────────────────────────────
-    @app_commands.command(name="case", description="عرض تفاصيل حالة إدارية بالرقم التسلسلي")
-    @app_commands.describe(case_id="رقم الحالة الإدارية")
-    async def case_detail(self, interaction: discord.Interaction, case_id: int):
+    @app_commands.command(name="case", description="عرض تفاصيل حالة إدارية (رقم خاص أو أحدث حالة إدارية)")
+    @app_commands.describe(case_id="رقم الحالة الإدارية (اختياري - اتركه فارغاً لعرض أحدث حالة)")
+    async def case_detail(self, interaction: discord.Interaction, case_id: Optional[int] = None):
         if not await is_mod(interaction):
             await interaction.response.send_message(Strings.ERROR_PERMISSIONS, ephemeral=True)
             return
 
         async with AsyncSessionLocal() as session:
-            result = await session.execute(
-                select(ModerationCase).where(
-                    ModerationCase.case_id == case_id,
-                    ModerationCase.guild_id == interaction.guild_id
+            if case_id is not None:
+                result = await session.execute(
+                    select(ModerationCase).where(
+                        ModerationCase.case_id == case_id,
+                        ModerationCase.guild_id == interaction.guild_id
+                    )
                 )
-            )
-            case = result.scalars().first()
+                case = result.scalars().first()
+            else:
+                # جلب أحدث حالة إدارية في السيرفر
+                result = await session.execute(
+                    select(ModerationCase)
+                    .where(ModerationCase.guild_id == interaction.guild_id)
+                    .order_by(ModerationCase.created_at.desc())
+                )
+                case = result.scalars().first()
 
         if not case:
-            await interaction.response.send_message(
-                f"لم يتم العثور على Case #{case_id} في هذا السيرفر.", ephemeral=True
-            )
+            msg = f"لم يتم العثور على Case #{case_id}." if case_id else "لا توجد حالات إدارية مسجلة في السيرفر بعد."
+            await interaction.response.send_message(msg, ephemeral=True)
             return
 
         try:
