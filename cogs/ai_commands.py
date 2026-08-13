@@ -72,5 +72,27 @@ class AICommandsCog(commands.Cog):
         for chunk in chunks[1:]:
             await interaction.channel.send(chunk)
 
+    @app_commands.command(name="explain_code", description="تحليل كود أو خطأ البرمجة وتفسيره وإصلاحه آلياً عبر Neon AI")
+    @app_commands.describe(code="الكود البرمجي أو نص الخطأ Traceback المراد تحليله وإصلاحه")
+    async def explain_code(self, interaction: discord.Interaction, code: str):
+        await interaction.response.defer()
+
+        sys_prompt = (
+            "أنت مهندس برمجيات خبير ووحدة Neon AI البرمجية. "
+            "قم بتحليل الكود أو نص الخطأ المرفق بدقة عالية، وتحديد السبب الجذر للخطأ (Root Cause)، "
+            "وتقديم الكود المصحح خطوة بخطوة بلغة أملس ومباشرة دون كلام زائد وبدون إيموجيات."
+        )
+
+        response = await ai_manager.generate(
+            messages=[{"role": "user", "content": f"قم بتحليل وإصلاح هذا الكود أو الخطأ:\n```\n{code}\n```"}],
+            system_prompt=sys_prompt
+        )
+
+        chunks = smart_split(response, max_length=2000)
+        await interaction.followup.send(chunks[0])
+        for chunk in chunks[1:]:
+            await interaction.channel.send(chunk)
+
 async def setup(bot: commands.Bot):
     await bot.add_cog(AICommandsCog(bot))
+

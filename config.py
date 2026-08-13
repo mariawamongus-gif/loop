@@ -8,13 +8,16 @@ class Config:
     DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///neon.db").strip()
     REDIS_URL: str = os.getenv("REDIS_URL", "redis://localhost:6379/0").strip()
 
-    
+    # Google AI Studio API Settings (Primary AI Model)
+    GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "").strip()
+    GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-1.5-flash").strip()
+
+    # Fallback AI Settings
     OPENROUTER_API_KEY: str = os.getenv("OPENROUTER_API_KEY", "")
     OPENROUTER_MODEL: str = os.getenv("OPENROUTER_MODEL", "openrouter/auto")
-    
+
     HUGGINGFACE_API_KEY: str = os.getenv("HUGGINGFACE_API_KEY", "")
     HUGGINGFACE_MODEL: str = os.getenv("HUGGINGFACE_MODEL", "mistralai/Mistral-7B-Instruct-v0.2")
-
 
     DEFAULT_CONFIDENCE_THRESHOLD: float = 0.80
     EMBED_COLOR: int = 0x1E1E2E  # Dark sleek industrial color

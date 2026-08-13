@@ -1,6 +1,7 @@
 import logging
 from typing import List, Dict, Any
 from ai.provider_base import AIProvider
+from ai.gemini_provider import GeminiProvider
 from ai.openrouter import OpenRouterProvider
 from ai.huggingface import HuggingFaceProvider
 from core.strings import Strings
@@ -8,6 +9,7 @@ from core.strings import Strings
 class AIFallbackManager:
     def __init__(self):
         self.providers: List[AIProvider] = [
+            GeminiProvider(),
             OpenRouterProvider(),
             HuggingFaceProvider()
         ]
