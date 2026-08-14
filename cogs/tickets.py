@@ -123,6 +123,8 @@ class TicketControlView(discord.ui.View):
 
 
 # ─── 2. زر فتح تذكرة جديد ──────────────────────────────────────────────────────
+opening_tickets_lock = set()
+
 class OpenTicketView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
@@ -137,117 +139,125 @@ class OpenTicketView(discord.ui.View):
         guild = interaction.guild
         user = interaction.user
 
-        # فحص إذا للمستخدم تذكرة مفتوحة بالفعل
-        async with AsyncSessionLocal() as session:
-            existing = await session.execute(
-                select(SupportTicket).where(
-                    SupportTicket.guild_id == guild.id,
-                    SupportTicket.user_id == user.id,
-                    SupportTicket.status.in_(["OPEN", "ESCALATED"])
-                )
+        # قفل مانع للنقر المتعدد السريع
+        lock_key = (guild.id, user.id)
+        if lock_key in opening_tickets_lock:
+            await interaction.response.send_message(
+                "جاري إنشاء تذكرتك بالفعل، الرجاء الانتظار ثانية واحدة...", ephemeral=True
             )
-            existing_ticket = existing.scalars().first()
-            if existing_ticket:
-                # التحقق ما إذا كانت القناة التابعة للتذكرة ما زالت موجودة فعلياً في السيرفر
-                chan = guild.get_channel(existing_ticket.channel_id)
-                if chan is not None:
-                    await interaction.response.send_message(
-                        f"⚠️ لديك تذكرة مفتوحة بالفعل في الروم: {chan.mention}. أغلق التذكرة الحالية قبل فتح واحدة جديدة.",
-                        ephemeral=True
+            return
+
+        opening_tickets_lock.add(lock_key)
+
+        try:
+            # فحص إذا للمستخدم تذكرة مفتوحة بالفعل
+            async with AsyncSessionLocal() as session:
+                existing = await session.execute(
+                    select(SupportTicket).where(
+                        SupportTicket.guild_id == guild.id,
+                        SupportTicket.user_id == user.id,
+                        SupportTicket.status.in_(["OPEN", "ESCALATED"])
                     )
-                    return
-                else:
-                    # القناة غير موجودة على ديسكورد (تذكرة ميتة/محذوفة) -> إغلاقها آلياً وتنظيفها
-                    existing_ticket.status = "CLOSED"
-                    existing_ticket.closed_at = datetime.utcnow()
+                )
+                existing_ticket = existing.scalars().first()
+                if existing_ticket:
+                    chan = guild.get_channel(existing_ticket.channel_id)
+                    if chan is not None:
+                        await interaction.response.send_message(
+                            f"⚠️ لديك تذكرة مفتوحة بالفعل في الروم: {chan.mention}. أغلق التذكرة الحالية قبل فتح واحدة جديدة.",
+                            ephemeral=True
+                        )
+                        return
+                    else:
+                        existing_ticket.status = "CLOSED"
+                        existing_ticket.closed_at = datetime.utcnow()
+                        await session.commit()
+
+                ticket = SupportTicket(
+                    guild_id=guild.id,
+                    channel_id=0,
+                    user_id=user.id,
+                    status="OPEN"
+                )
+                session.add(ticket)
+                await session.commit()
+                await session.refresh(ticket)
+
+                ticket_id = ticket.ticket_id
+                ticket_id_formatted = f"{ticket_id:04d}"
+
+                result_config = await session.execute(
+                    select(GuildConfig).where(GuildConfig.guild_id == guild.id)
+                )
+                config = result_config.scalars().first()
+
+            category = None
+            if config and config.ticket_category_id:
+                category = guild.get_channel(config.ticket_category_id)
+
+            overwrites = {
+                guild.default_role: discord.PermissionOverwrite(read_messages=False),
+                user: discord.PermissionOverwrite(
+                    read_messages=True, send_messages=True, attach_files=True
+                ),
+                guild.me: discord.PermissionOverwrite(
+                    read_messages=True, send_messages=True, manage_channels=True
+                ),
+            }
+
+            if config and config.admin_role_id:
+                admin_role = guild.get_role(config.admin_role_id)
+                if admin_role:
+                    overwrites[admin_role] = discord.PermissionOverwrite(
+                        read_messages=True, send_messages=True
+                    )
+            if config and config.mod_role_id:
+                mod_role = guild.get_role(config.mod_role_id)
+                if mod_role:
+                    overwrites[mod_role] = discord.PermissionOverwrite(
+                        read_messages=True, send_messages=True
+                    )
+
+            ticket_channel = await guild.create_text_channel(
+                name=f"ticket-{ticket_id_formatted}",
+                category=category,
+                overwrites=overwrites,
+                topic=f"تذكرة #{ticket_id_formatted} | {user.name} | {datetime.utcnow().strftime('%Y-%m-%d %H:%M')} UTC"
+            )
+
+            async with AsyncSessionLocal() as session:
+                t = await session.get(SupportTicket, ticket_id)
+                if t:
+                    t.channel_id = ticket_channel.id
                     await session.commit()
 
-            ticket = SupportTicket(
-                guild_id=guild.id,
-                channel_id=0,
-                user_id=user.id,
-                status="OPEN"
+            embed = create_neon_embed(
+                title=f"🎫 تذكرة دعم #{ticket_id_formatted}",
+                description=(
+                    f"مرحباً {user.mention} 👋\n\n"
+                    f"`──────── تعليمات التذكرة ────────`\n"
+                    f"**1.** اشرح مشكلتك بالتفصيل الكامل.\n"
+                    f"**2.** أرفق أي صور أو ملفات داعمة.\n"
+                    f"**3.** سيرد **Neon AI** عليك آلياً خلال ثوانٍ.\n"
+                    f"**4.** اضغط **تحويل لمشرف** إذا أردت دعماً بشرياً.\n\n"
+                    f"`──────── معلومات التذكرة ────────`\n"
+                    f"• **الرقم التسلسلي:** `#{ticket_id_formatted}`\n"
+                    f"• **المُنشئ:** {user.mention} (`{user.id}`)\n"
+                    f"• **وقت الفتح:** `{datetime.utcnow().strftime('%Y-%m-%d %H:%M')} UTC`\n"
+                    f"• **الحالة:** 🟢 مفتوحة"
+                ),
+                color=0x5865F2
             )
-            session.add(ticket)
-            await session.commit()
-            await session.refresh(ticket)
+            embed.set_thumbnail(url=user.display_avatar.url if user.display_avatar else "")
+            embed.set_author(name=guild.name, icon_url=guild.icon.url if guild.icon else None)
 
-            ticket_id = ticket.ticket_id
-            ticket_id_formatted = f"{ticket_id:04d}"
-
-            result_config = await session.execute(
-                select(GuildConfig).where(GuildConfig.guild_id == guild.id)
+            control_view = TicketControlView(ticket_id)
+            await ticket_channel.send(content=user.mention, embed=embed, view=control_view)
+            await interaction.response.send_message(
+                f"✅ تم فتح تذكرتك: {ticket_channel.mention}", ephemeral=True
             )
-            config = result_config.scalars().first()
-
-        category = None
-        if config and config.ticket_category_id:
-            category = guild.get_channel(config.ticket_category_id)
-
-        overwrites = {
-            guild.default_role: discord.PermissionOverwrite(read_messages=False),
-            user: discord.PermissionOverwrite(
-                read_messages=True, send_messages=True, attach_files=True
-            ),
-            guild.me: discord.PermissionOverwrite(
-                read_messages=True, send_messages=True, manage_channels=True
-            ),
-        }
-
-        # إضافة صلاحيات للمشرفين والأدمنية
-        if config and config.admin_role_id:
-            admin_role = guild.get_role(config.admin_role_id)
-            if admin_role:
-                overwrites[admin_role] = discord.PermissionOverwrite(
-                    read_messages=True, send_messages=True
-                )
-        if config and config.mod_role_id:
-            mod_role = guild.get_role(config.mod_role_id)
-            if mod_role:
-                overwrites[mod_role] = discord.PermissionOverwrite(
-                    read_messages=True, send_messages=True
-                )
-
-        ticket_channel = await guild.create_text_channel(
-            name=f"ticket-{ticket_id_formatted}",
-            category=category,
-            overwrites=overwrites,
-            topic=f"تذكرة #{ticket_id_formatted} | {user.name} | {datetime.utcnow().strftime('%Y-%m-%d %H:%M')} UTC"
-        )
-
-        async with AsyncSessionLocal() as session:
-            t = await session.get(SupportTicket, ticket_id)
-            if t:
-                t.channel_id = ticket_channel.id
-                await session.commit()
-
-        # الـ Embed الترحيبي في التذكرة
-        embed = create_neon_embed(
-            title=f"🎫 تذكرة دعم #{ticket_id_formatted}",
-            description=(
-                f"مرحباً {user.mention} 👋\n\n"
-                f"`──────── تعليمات التذكرة ────────`\n"
-                f"**1.** اشرح مشكلتك بالتفصيل الكامل.\n"
-                f"**2.** أرفق أي صور أو ملفات داعمة.\n"
-                f"**3.** سيرد **Neon AI** عليك آلياً خلال ثوانٍ.\n"
-                f"**4.** اضغط **تحويل لمشرف** إذا أردت دعماً بشرياً.\n\n"
-                f"`──────── معلومات التذكرة ────────`\n"
-                f"• **الرقم التسلسلي:** `#{ticket_id_formatted}`\n"
-                f"• **المُنشئ:** {user.mention} (`{user.id}`)\n"
-                f"• **وقت الفتح:** `{datetime.utcnow().strftime('%Y-%m-%d %H:%M')} UTC`\n"
-                f"• **الحالة:** 🟢 مفتوحة"
-            ),
-            color=0x5865F2
-        )
-        embed.set_thumbnail(url=user.display_avatar.url if user.display_avatar else "")
-        embed.set_author(name=guild.name, icon_url=guild.icon.url if guild.icon else None)
-
-        # إرسال embed مع أزرار التحكم مرة واحدة فقط
-        control_view = TicketControlView(ticket_id)
-        await ticket_channel.send(content=user.mention, embed=embed, view=control_view)
-        await interaction.response.send_message(
-            f"✅ تم فتح تذكرتك: {ticket_channel.mention}", ephemeral=True
-        )
+        finally:
+            opening_tickets_lock.discard(lock_key)
 
 
 # ─── 3. الـ Cog الرئيسي ─────────────────────────────────────────────────────────
@@ -283,12 +293,16 @@ class TicketsCog(commands.Cog):
 
             embed = create_warning_embed(
                 "تحويل التذكرة للمشرف البشري",
-                "تم تسجيل طلبك. سيتواصل معك أحد المشرفين قريباً."
+                "تم تسجيل طلبك وتفعيل وضع الدعم البشري. سيتواصل معك أحد المشرفين قريباً."
             )
             await message.channel.send(embed=embed)
             return
 
-        # محاورة AI — بدون إعادة إرسال الأزرار في كل مرة
+        # إذا كانت التذكرة مُحوّلة لمشرف بشري (ESCALATED)، يتوقف الـ AI عن الرد الآلي لتجنب التشويش
+        if ticket.status == "ESCALATED":
+            return
+
+        # محاورة AI
         async with message.channel.typing():
             history_messages = []
             async for msg in message.channel.history(limit=12, oldest_first=True):
