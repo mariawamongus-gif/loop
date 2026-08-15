@@ -25,6 +25,10 @@ class WordFilterCog(commands.Cog):
         if not message.guild or message.author.bot or len(message.content.strip()) < 3:
             return
 
+        # تجاهل قنوات التذاكر تماماً لتجنب التضارب
+        if message.channel.name.startswith("ticket-"):
+            return
+
         guild = message.guild
         author = message.author
 
