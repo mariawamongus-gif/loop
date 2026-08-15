@@ -202,6 +202,10 @@ class ProtectionCog(commands.Cog):
         if not message.guild or message.author.bot:
             return
 
+        # تجاهل قنوات التذاكر تماماً لتجنب التضارب مع TicketsCog
+        if message.channel.name.startswith("ticket-"):
+            return
+
         guild = message.guild
         author = message.author
 
