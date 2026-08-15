@@ -37,7 +37,7 @@ async def generate_welcome_card(
     member_count: int
 ) -> io.BytesIO:
     """
-    توليد بطاقة ترحيب فائقة الفخامة بنمط الرخام المنقوش وشعار TS والزخارف الباروكية.
+    توليد بطاقة ترحيب فائقة الفخامة بخطوط كبيرة وبارزة جداً ونمط الرخام المنقوش بشعار TS.
     """
     base_width, base_height = 1376, 768
 
@@ -55,7 +55,7 @@ async def generate_welcome_card(
 
     # ─── 1. فتح وتثبيت صورة الأفاتار في المكان المخصص ────────────────────────
     avatar_center = (262, 384)
-    avatar_radius = 105
+    avatar_radius = 115
     avatar_size = avatar_radius * 2
 
     avatar_image = None
@@ -85,57 +85,54 @@ async def generate_welcome_card(
     # دمج الأفاتار
     card.paste(avatar_image, (x1, y1), mask)
 
-    # رسم إطار معدني مشطوف حول دائرة الأفاتار (Bezel Relief)
-    draw.ellipse([x1 - 4, y1 - 4, x1 + avatar_size + 4, y1 + avatar_size + 4], outline=(255, 255, 255, 220), width=3)
-    draw.ellipse([x1 - 1, y1 - 1, x1 + avatar_size + 1, y1 + avatar_size + 1], outline=(30, 30, 35, 255), width=3)
+    # رسم إطار معدني مشطوف حول دائرة الأفاتار
+    draw.ellipse([x1 - 6, y1 - 6, x1 + avatar_size + 6, y1 + avatar_size + 6], outline=(255, 255, 255, 230), width=4)
+    draw.ellipse([x1 - 2, y1 - 2, x1 + avatar_size + 2, y1 + avatar_size + 2], outline=(25, 25, 30, 255), width=4)
 
-    # ─── 2. الخطوط والنصوص المحفورة ثلاثية الأبعاد ───────────────────────────
-    font_welcome = _get_font("georgiab", 32)
-    font_server = _get_font("georgiab", 44)
-    font_user = _get_font("segoeuib", 36)
-    font_count = _get_font("georgia", 28)
+    # ─── 2. الخطوط الكبيرة والنصوص المحفورة ثلاثية الأبعاد ─────────────────────
+    font_welcome = _get_font("georgiab", 52)
+    font_server = _get_font("georgiab", 70)
+    font_user = _get_font("segoeuib", 58)
+    font_count = _get_font("georgiab", 42)
 
-    def draw_engraved(pos, text, font, fill=(35, 35, 40, 255)):
-        """رسم نص رخامي منقوش بظل ثلاثي الأبعاد."""
+    def draw_engraved(pos, text, font, fill=(30, 30, 35, 255)):
+        """رسم نص رخامي منقوش بظل ثلاثي الأبعاد بارز جداً."""
         tx, ty = pos
         # الظل الفاتح السفلي لإبراز النحت
-        draw.text((tx + 2, ty + 2), text, fill=(255, 255, 255, 200), font=font)
+        draw.text((tx + 3, ty + 3), text, fill=(255, 255, 255, 210), font=font)
         # الظل الداكن العلوي للعمق
-        draw.text((tx - 1, ty - 1), text, fill=(15, 15, 20, 140), font=font)
+        draw.text((tx - 2, ty - 2), text, fill=(10, 10, 15, 150), font=font)
         # اللون الأساسي
         draw.text((tx, ty), text, fill=fill, font=font)
 
-    text_x = 420
-    text_y = 230
+    text_x = 430
+    text_y = 160
 
     # سطر WELCOME TO
-    draw_engraved((text_x, text_y), "WELCOME TO", font_welcome, (65, 65, 75, 255))
+    draw_engraved((text_x, text_y), "WELCOME TO", font_welcome, (70, 70, 80, 255))
 
     # سطر اسم السيرفر
     display_server = server_name.strip().upper()
-    if len(display_server) > 20:
-        display_server = display_server[:18] + "..."
-    draw_engraved((text_x, text_y + 46), display_server, font_server, (20, 20, 25, 255))
+    if len(display_server) > 16:
+        display_server = display_server[:14] + "..."
+    draw_engraved((text_x, text_y + 68), display_server, font_server, (15, 15, 20, 255))
 
-    # خط فاصل معدني دقيق
-    line_y = text_y + 115
-    draw.line([(text_x, line_y), (text_x + 420, line_y)], fill=(160, 160, 170, 220), width=2)
-    draw.line([(text_x, line_y + 2), (text_x + 420, line_y + 2)], fill=(255, 255, 255, 220), width=2)
+    # خط فاصل معدني بارز
+    line_y = text_y + 175
+    draw.line([(text_x, line_y), (text_x + 460, line_y)], fill=(140, 140, 150, 240), width=3)
+    draw.line([(text_x, line_y + 3), (text_x + 460, line_y + 3)], fill=(255, 255, 255, 240), width=3)
 
     # سطر اسم العضو
     display_user = username.strip()
-    if len(display_user) > 18:
-        display_user = display_user[:16] + "..."
-    draw_engraved((text_x, text_y + 130), f"@{display_user}", font_user, (35, 35, 45, 255))
+    if len(display_user) > 16:
+        display_user = display_user[:14] + "..."
+    draw_engraved((text_x, text_y + 200), f"@{display_user}", font_user, (25, 25, 35, 255))
 
     # سطر رقم العضو
-    draw_engraved((text_x, text_y + 185), f"MEMBER #{member_count}", font_count, (85, 85, 95, 255))
-
-    # تصغير حجم البطاقة قليلاً لسرعة الإرسال والتوافق المثالي في الديسكورد
-    final_card = card.resize((1000, 558), Image.Resampling.LANCZOS)
+    draw_engraved((text_x, text_y + 285), f"MEMBER #{member_count}", font_count, (80, 80, 90, 255))
 
     buffer = io.BytesIO()
-    final_card.save(buffer, format="PNG", optimize=True)
+    card.save(buffer, format="PNG", optimize=True)
     buffer.seek(0)
     return buffer
 
