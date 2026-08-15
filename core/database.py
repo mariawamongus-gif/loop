@@ -7,8 +7,19 @@ AsyncSessionLocal = async_sessionmaker(bind=engine, class_=AsyncSession, expire_
 Base = declarative_base()
 
 async def init_db():
+    import core.models  # Ensures all models are registered with Base.metadata
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        
+        # SQLite Auto-Migration: فحص الأعمدة المضافة حديثاً وإضافتها تلقائياً إن لم تكن موجودة
+        try:
+            from sqlalchemy import text
+            res = await conn.execute(text("PRAGMA table_info(guild_configs);"))
+            columns = [row[1] for row in res.fetchall()]
+            if "temp_voice_channel_id" not in columns:
+                await conn.execute(text("ALTER TABLE guild_configs ADD COLUMN temp_voice_channel_id BIGINT;"))
+        except Exception:
+            pass
 
 async def get_db():
     async with AsyncSessionLocal() as session:

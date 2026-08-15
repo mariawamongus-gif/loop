@@ -30,6 +30,7 @@ class SetupDashboardView(discord.ui.View):
             discord.SelectOption(label="الإحصائيات والتقارير", value="stats", emoji="6\ufe0f\u20e3", description="التقارير الدورية والإحصائيات"),
             discord.SelectOption(label="الذكاء الاصطناعي", value="ai", emoji="7\ufe0f\u20e3", description="إعدادات Neon AI والمزودين"),
             discord.SelectOption(label="بروتوكول الصمت", value="silent", emoji="8\ufe0f\u20e3", description="إيقاف جميع التفاعلات الاجتماعية"),
+            discord.SelectOption(label="تفويض الرتب والصلاحيات", value="roles", emoji="👑", description="ضبط رتب المستوى الماكس والتكتيكي والحصانة"),
         ]
     )
     async def select_system(self, interaction: discord.Interaction, select_menu: discord.ui.Select):
@@ -69,6 +70,16 @@ class SetupDashboardView(discord.ui.View):
         elif system == "silent":
             view = ToggleOnlyView(self.guild_id, "silent")
             embed = _build_system_embed("بروتوكول الصمت | Silent Protocol", config, "silent")
+        elif system == "roles":
+            from cogs.role_selector import RoleSelectorView
+            view = RoleSelectorView()
+            desc = (
+                "استخدم القوائم أدناه لتفويض الرتب والصلاحيات:\n"
+                "• **🔴 المستوى الماكس:** للأوامر الخطيرة والإعدادات والقفل.\n"
+                "• **🟡 المستوى التكتيكي:** لأوامر الإشراف والعقوبات والمسح.\n"
+                "• **🟢 مستوى الحصانة:** للإعفاء من الفلاتر والمود الذكي."
+            )
+            embed = create_neon_embed("تفويض الرتب والصلاحيات | Role Matrix", desc, color=0x5865F2)
         else:
             return
 
@@ -479,7 +490,7 @@ class SetupCog(commands.Cog):
             f"`════════════ القنوات ════════════`\n"
             f"السجلات: {ch(config.log_channel_id)}\n"
             f"الترحيب: {ch(config.welcome_channel_id)} | الوداع: {ch(config.leave_channel_id)}\n"
-            f"التقارير: {ch(config.report_channel_id)}\n"
+            f"التقارير: {ch(config.report_channel_id)} | الروم الصوتي المؤقت: {ch(getattr(config, 'temp_voice_channel_id', None))}\n"
             f"فئة التذاكر: {ch(config.ticket_category_id)}\n\n"
             f"`════════════ الرولات ════════════`\n"
             f"رتبة الأدمن: {rl(config.admin_role_id)}\n"

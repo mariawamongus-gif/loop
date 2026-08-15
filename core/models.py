@@ -16,6 +16,7 @@ class GuildConfig(Base):
     auto_role_id = Column(BigInteger, nullable=True)
     stats_channel_id = Column(BigInteger, nullable=True)
     report_channel_id = Column(BigInteger, nullable=True)
+    temp_voice_channel_id = Column(BigInteger, nullable=True)
 
     confidence_threshold = Column(Float, default=0.80)
     witness_required = Column(Integer, default=2)
@@ -40,6 +41,15 @@ class Whitelist(Base):
     guild_id = Column(BigInteger, index=True, nullable=False)
     target_id = Column(BigInteger, nullable=False)
     target_type = Column(String(10), nullable=False)  # 'user' or 'role'
+
+
+class RolePermissionTier(Base):
+    __tablename__ = "role_permission_tiers"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    guild_id = Column(BigInteger, index=True, nullable=False)
+    tier = Column(String(30), index=True, nullable=False)  # 'EXECUTIVE', 'TACTICAL', 'IMMUNITY'
+    role_id = Column(BigInteger, nullable=False)
 
 
 class ModerationCase(Base):

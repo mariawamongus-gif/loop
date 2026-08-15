@@ -57,7 +57,7 @@ class AICommandsCog(commands.Cog):
                 .strip()
             )
             if not clean_content:
-                clean_content = "مرحباً! كيف يمكنني مساعدتك؟"
+                clean_content = "وحدة العمليات الاستراتيجية Neon جاهزة وتحت أمرك. بانتظار التوجيهات."
 
             self._add_to_context(message.channel.id, message.author.id, "user", clean_content)
 
@@ -207,6 +207,34 @@ class AICommandsCog(commands.Cog):
         await interaction.followup.send(f"**📝 ملخص آخر {count} رسالة:**\n\n{chunks[0]}")
         for chunk in chunks[1:]:
             await interaction.channel.send(chunk)
+
+    # ─── /search ─────────────────────────────────────────────────────────────────
+    @app_commands.command(
+        name="search",
+        description="البحث الحي في شبكة الإنترنت وتلخيص النتائج عبر Neon AI مع إرفاق المصادر"
+    )
+    @app_commands.describe(query="موضوع أو سؤال البحث بالإنترنت")
+    async def search(self, interaction: discord.Interaction, query: str):
+        await interaction.response.defer()
+
+        from ai.web_search import search_and_synthesize
+        res = await search_and_synthesize(query)
+
+        summary = res["summary"]
+        sources = res["sources"]
+
+        sources_str = "\n".join(sources[:4]) if sources else "`المصادر مفتوحة`"
+        desc = (
+            f"**الاستعلام:** `{query}`\n\n"
+            f"`──────── التقرير المستخرج ────────`\n"
+            f"{summary}\n\n"
+            f"`──────── المصادر والروابط ────────`\n"
+            f"{sources_str}"
+        )
+
+        embed = create_neon_embed(f"نتائج البحث المباشر | Web Search", desc, color=0x00F5FF)
+        await interaction.followup.send(embed=embed)
+        self._track_usage(interaction.guild_id, len(summary))
 
 
 async def setup(bot: commands.Bot):

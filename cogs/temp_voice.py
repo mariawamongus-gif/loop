@@ -24,7 +24,8 @@ class TempVoiceCog(commands.Cog):
                 res = await session.execute(select(GuildConfig).where(GuildConfig.guild_id == guild.id))
                 config = res.scalars().first()
 
-            if config and config.stats_channel_id and after.channel.id == config.stats_channel_id:
+            trigger_id = getattr(config, "temp_voice_channel_id", None) or config.stats_channel_id
+            if trigger_id and after.channel.id == trigger_id:
                 category = after.channel.category
                 overwrites = {
                     guild.default_role: discord.PermissionOverwrite(connect=True),
@@ -67,7 +68,7 @@ class TempVoiceCog(commands.Cog):
                 config = GuildConfig(guild_id=interaction.guild_id)
                 session.add(config)
 
-            config.stats_channel_id = channel.id
+            config.temp_voice_channel_id = channel.id
             await session.commit()
 
         embed = create_neon_embed(

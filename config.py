@@ -25,3 +25,7 @@ class Config:
     EMBED_COLOR_SUCCESS: int = 0x50FA7B
     EMBED_COLOR_WARNING: int = 0xFFB86C
     EMBED_COLOR_CRITICAL: int = 0xFF0000
+
+    # Dashboard Web Server Settings
+    DASHBOARD_PORT: int = int(os.getenv("PORT", os.getenv("DASHBOARD_PORT", "8080")))
+    DASHBOARD_ENABLED: bool = os.getenv("DASHBOARD_ENABLED", "true").lower() in ("true", "1", "yes")

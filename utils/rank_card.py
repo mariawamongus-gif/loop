@@ -67,7 +67,8 @@ async def generate_rank_card(username: str, avatar_url: str, level: int, xp: int
     draw.rounded_rectangle([bar_x, bar_y, bar_x + bar_w, bar_y + bar_h], radius=13, fill=(35, 35, 55, 255))
     # الجزء الممتلئ النيون
     if fill_w > 0:
-        draw.rounded_rectangle([bar_x, bar_y, bar_x + fill_w, bar_y + bar_h], radius=13, fill=(0, 245, 255, 255))
+        bar_radius = min(13, fill_w // 2) if fill_w >= 4 else 0
+        draw.rounded_rectangle([bar_x, bar_y, bar_x + fill_w, bar_y + bar_h], radius=bar_radius, fill=(0, 245, 255, 255))
 
     # نص الخبرة فوق الشريط
     draw.text((bar_x + 10, bar_y + 6), f"XP: {xp} / {xp_needed} ({int(progress * 100)}%)", fill=(15, 15, 23, 255), font=font_large)
