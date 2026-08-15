@@ -4,13 +4,30 @@ from discord.ext import commands
 from typing import Optional
 from config import Config
 
-# ألوان ثيم الرخام والجرانيت الرمادي الأنيق (Slate / Discord Dark Palette)
+# ألوان ثيم الجرانيت الرمادي الأنيق (Slate / Discord Dark Palette)
 SLATE_DARK = 0x2B2D31
 SILVER_METALLIC = 0x80848E
 
+# قاموس الأيقونات المسطحة (يدعم أيضاً إيموجيات التطبيق المخصصة Application Emojis <:name:id>)
+DEFAULT_MONO_ICONS = {
+    "moderation": "⚔️",
+    "defense": "🛡️",
+    "utilities": "💎",
+    "welcome": "✏️",
+    "leveling": "⚡",
+    "ai_search": "🤖",
+    "tickets": "🎫",
+    "setup": "👑",
+    "stats": "📊",
+    "dashboard": "💎",
+    "invite": "🌙",
+    "overview": "💖",
+    "placeholder": "📁"
+}
+
 HELP_DATABASE = {
     "moderation": {
-        "emoji": "⚔️",
+        "key": "moderation",
         "title": "الإدارة والإشراف",
         "menu_desc": "أمر إداري — تحكم لا حدود له بسيرفرك",
         "desc": "حزمة الأدوات التأديبية والإشرافية الميدانية للتحكم في الأعضاء وتنظيف القنوات:",
@@ -31,7 +48,7 @@ HELP_DATABASE = {
         ]
     },
     "defense": {
-        "emoji": "🛡️",
+        "key": "defense",
         "title": "الحماية والدفاع",
         "menu_desc": "سيرفرك محمي 24/7 — حتى وأنت دايم",
         "desc": "منظومة الطوارئ القصوى ومكافحة الرايد والتخريب وعزل الحسابات المشبوهة:",
@@ -47,7 +64,7 @@ HELP_DATABASE = {
         ]
     },
     "utilities": {
-        "emoji": "💎",
+        "key": "utilities",
         "title": "المعلومات والأدوات",
         "menu_desc": "كل معلومة وكل أداة يومية تحتاجها — جاهزة",
         "desc": "أدوات نشر الإعلانات، الاستطلاعات، الاستعلام عن الأعضاء، والبلاغات السرية:",
@@ -62,7 +79,7 @@ HELP_DATABASE = {
         ]
     },
     "welcome": {
-        "emoji": "✏️",
+        "key": "welcome",
         "title": "الترحيب والاستقبال",
         "menu_desc": "أول انطباع يبقى بالذاكرة — ركب بأسلوبك أنت",
         "desc": "نظام الترحيب الفاخر بالأعضاء الجدد والعائدين مع إسناد الرتب التلقائية:",
@@ -71,7 +88,7 @@ HELP_DATABASE = {
         ]
     },
     "leveling": {
-        "emoji": "⚡",
+        "key": "leveling",
         "title": "المستويات والبروفايل",
         "menu_desc": "كافئ النشيطين... وخلي السيرفر يدمن التفاعل",
         "desc": "نظام احتساب نقاط الخبرة (XP) والتفاعل وتوليد البطاقات الرسومية:",
@@ -84,7 +101,7 @@ HELP_DATABASE = {
         ]
     },
     "ai_search": {
-        "emoji": "🤖",
+        "key": "ai_search",
         "title": "الذكاء الاصطناعي والبحث",
         "menu_desc": "استخبارات فورية وبحث حي بالإنترنت مع تلخيص",
         "desc": "وحدة الاستخبارات والبحث الفوري وتحليل الأكواد بشخصية المساعد المنضبط:",
@@ -97,7 +114,7 @@ HELP_DATABASE = {
         ]
     },
     "tickets": {
-        "emoji": "🎫",
+        "key": "tickets",
         "title": "التذاكر والدعم الفني",
         "menu_desc": "تذاكر آلية وأرشفة سجلات الدعم كاملة",
         "desc": "نظام تذاكر الدعم الفني المؤتمت بالذكاء الاصطناعي مع الأرشفة والتصعيد:",
@@ -107,7 +124,7 @@ HELP_DATABASE = {
         ]
     },
     "setup": {
-        "emoji": "👑",
+        "key": "setup",
         "title": "الإعدادات وتفويض الرتب",
         "menu_desc": "لوحة /setup وتخصيص قنوات وأنظمة السيرفر",
         "desc": "لوحات التحكم المركزية وضبط القنوات المخصصة وتفويض صلاحيات الرتب:",
@@ -120,7 +137,7 @@ HELP_DATABASE = {
         ]
     },
     "stats": {
-        "emoji": "📊",
+        "key": "stats",
         "title": "الإحصائيات والنسخ الاحتياطي",
         "menu_desc": "تقارير شاملة، عتاد الخادم، وباك أب مشفر",
         "desc": "مراقبة الأداء، التقارير الدورية، عتاد الخادم، وتأمين السيرفر بالنسخ الاحتياطي:",
@@ -142,11 +159,12 @@ class LonaStyleSelect(discord.ui.Select):
     def __init__(self):
         options = []
         for cat_key, data in HELP_DATABASE.items():
+            icon = DEFAULT_MONO_ICONS.get(cat_key, "✦")
             options.append(discord.SelectOption(
                 label=data["title"],
                 value=cat_key,
                 description=data["menu_desc"][:100],
-                emoji=data["emoji"]
+                emoji=icon
             ))
         super().__init__(
             placeholder="📁  وش تبي تعرف عن نيون؟",
@@ -174,7 +192,7 @@ class LonaStyleHelpView(discord.ui.View):
         dashboard_url = "https://loop-production-9e4f.up.railway.app/"
         self.add_item(discord.ui.Button(
             label="الداشبورد",
-            emoji="💎",
+            emoji=DEFAULT_MONO_ICONS.get("dashboard", "💎"),
             url=dashboard_url,
             style=discord.ButtonStyle.link,
             row=1
@@ -183,13 +201,13 @@ class LonaStyleHelpView(discord.ui.View):
         invite_url = f"https://discord.com/oauth2/authorize?client_id={bot_id}&permissions=8&scope=bot%20applications.commands"
         self.add_item(discord.ui.Button(
             label="دعوة نيون",
-            emoji="🌙",
+            emoji=DEFAULT_MONO_ICONS.get("invite", "🌙"),
             url=invite_url,
             style=discord.ButtonStyle.link,
             row=1
         ))
 
-    @discord.ui.button(label="الفهرس", style=discord.ButtonStyle.secondary, emoji="💖", row=1)
+    @discord.ui.button(label="الفهرس", style=discord.ButtonStyle.secondary, emoji=DEFAULT_MONO_ICONS.get("overview", "💖"), row=1)
     async def show_all(self, interaction: discord.Interaction, button: discord.ui.Button):
         embed = build_overview_embed(interaction.guild)
         await interaction.response.edit_message(embed=embed, view=self)
@@ -215,8 +233,9 @@ def build_overview_embed(guild: Optional[discord.Guild]) -> discord.Embed:
 
 def build_category_embed(cat_key: str, guild: Optional[discord.Guild]) -> discord.Embed:
     cat = HELP_DATABASE[cat_key]
+    icon = DEFAULT_MONO_ICONS.get(cat_key, "✦")
     embed = discord.Embed(
-        title=f"{cat['emoji']}  {cat['title']}",
+        title=f"{icon}  {cat['title']}",
         description=f"*{cat['desc']}*\n",
         color=SLATE_DARK
     )
@@ -240,15 +259,15 @@ class HelpCog(commands.Cog):
     @app_commands.command(name="help", description="دليل الأوامر التفاعلي وشرح كافة مميزات نيون")
     @app_commands.describe(category="اختر قسماً محدداً لعرض أوامره مباشرة (اختياري)")
     @app_commands.choices(category=[
-        app_commands.Choice(name="⚔️ الإدارة والإشراف (13 أمر)", value="moderation"),
-        app_commands.Choice(name="🛡️ الحماية والدفاع (8 أوامر)", value="defense"),
-        app_commands.Choice(name="💎 المعلومات والأدوات (7 أوامر)", value="utilities"),
-        app_commands.Choice(name="✏️ الترحيب والاستقبال (1 أمر)", value="welcome"),
-        app_commands.Choice(name="⚡ المستويات والبروفايل (5 أوامر)", value="leveling"),
-        app_commands.Choice(name="🤖 الذكاء الاصطناعي والبحث (5 أوامر)", value="ai_search"),
-        app_commands.Choice(name="🎫 التذاكر والدعم الفني (2 أوامر)", value="tickets"),
-        app_commands.Choice(name="👑 الإعدادات وتفويض الرتب (5 أوامر)", value="setup"),
-        app_commands.Choice(name="📊 الإحصائيات والنسخ الاحتياطي (8 أوامر)", value="stats"),
+        app_commands.Choice(name="الإدارة والإشراف (13 أمر)", value="moderation"),
+        app_commands.Choice(name="الحماية والدفاع (8 أوامر)", value="defense"),
+        app_commands.Choice(name="المعلومات والأدوات (7 أوامر)", value="utilities"),
+        app_commands.Choice(name="الترحيب والاستقبال (1 أمر)", value="welcome"),
+        app_commands.Choice(name="المستويات والبروفايل (5 أوامر)", value="leveling"),
+        app_commands.Choice(name="الذكاء الاصطناعي والبحث (5 أوامر)", value="ai_search"),
+        app_commands.Choice(name="التذاكر والدعم الفني (2 أوامر)", value="tickets"),
+        app_commands.Choice(name="الإعدادات وتفويض الرتب (5 أوامر)", value="setup"),
+        app_commands.Choice(name="الإحصائيات والنسخ الاحتياطي (8 أوامر)", value="stats"),
     ])
     async def help_command(self, interaction: discord.Interaction, category: Optional[str] = None):
         view = LonaStyleHelpView(self.bot.user.id if self.bot.user else 0)
