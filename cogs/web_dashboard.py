@@ -35,6 +35,7 @@ class WebDashboardCog(commands.Cog):
         try:
             app = web.Application()
             app.router.add_get('/', self.handle_index)
+            app.router.add_get('/favicon.ico', self.handle_favicon)
             app.router.add_get('/api/stats', self.handle_stats)
             app.router.add_get('/api/guilds', self.handle_guilds)
             app.router.add_get('/api/logs', self.handle_logs)
@@ -49,11 +50,20 @@ class WebDashboardCog(commands.Cog):
         except Exception as e:
             logger.warning(f"تعذر تشغيل سيرفر لوحة التحكم Web Dashboard: {e}")
 
+    async def handle_favicon(self, request):
+        return web.Response(status=204)
+
     async def handle_index(self, request):
-        index_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'web', 'index.html')
-        if os.path.exists(index_path):
-            with open(index_path, 'r', encoding='utf-8') as f:
-                return web.Response(text=f.read(), content_type='text/html')
+        candidate_paths = [
+            os.path.join(os.path.dirname(os.path.dirname(__file__)), 'web', 'index.html'),
+            os.path.join(os.getcwd(), 'web', 'index.html'),
+            '/app/web/index.html',
+            'web/index.html'
+        ]
+        for p in candidate_paths:
+            if os.path.exists(p):
+                with open(p, 'r', encoding='utf-8') as f:
+                    return web.Response(text=f.read(), content_type='text/html')
         return web.Response(text="<h1>Neon Dashboard UI is loading...</h1>", content_type='text/html')
 
     async def handle_stats(self, request):
