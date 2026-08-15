@@ -1,3 +1,4 @@
+import re
 import discord
 from discord import app_commands
 from discord.ext import commands
@@ -5,6 +6,43 @@ from ai.fallback_manager import ai_manager
 from utils.smart_split import smart_split
 from utils.embeds import create_neon_embed, create_success_embed, create_error_embed
 from core.strings import Strings
+from core.database import AsyncSessionLocal
+from core.models import GuildConfig
+
+
+def is_requesting_staff(text: str) -> bool:
+    """فحص ذكي للتحقق مما إذا كان العضو يطلب التحدث مع مشرف أو إدارة."""
+    patterns = [
+        r"مشرف", r"مسؤول", r"مسئول", r"ادمن", r"أدمن", r"إدارة", r"اداره",
+        r"طاقم", r"شخص حقيقي", r"بشري", r"support", r"admin", r"mod", r"staff",
+        r"نادي لي", r"نادي المشرف", r"ابغى اكلم", r"بدي اكلم", r"ممكن اكلم"
+    ]
+    return any(re.search(p, text, re.IGNORECASE) for p in patterns)
+
+
+async def get_staff_role_mention(guild: discord.Guild) -> str:
+    """جلب منشن رتبة المشرفين أو الإدارة من إعدادات السيرفر."""
+    try:
+        async with AsyncSessionLocal() as session:
+            config = await session.get(GuildConfig, guild.id)
+            if config:
+                if config.mod_role_id:
+                    r = guild.get_role(config.mod_role_id)
+                    if r:
+                        return r.mention
+                if config.admin_role_id:
+                    r = guild.get_role(config.admin_role_id)
+                    if r:
+                        return r.mention
+    except Exception:
+        pass
+
+    # بحث تلقائي عن رتبة المشرفين بالسيرفر
+    for role in guild.roles:
+        if role.permissions.manage_guild or role.permissions.manage_messages or role.permissions.administrator:
+            if not role.is_default() and not role.managed:
+                return role.mention
+    return "@here"
 
 
 class AICommandsCog(commands.Cog):
@@ -37,6 +75,17 @@ class AICommandsCog(commands.Cog):
         self.usage_stats[guild_id]["requests"] += 1
         self.usage_stats[guild_id]["chars_total"] += response_len
 
+    def _build_system_prompt(self, guild: discord.Guild, author: discord.Member, channel: discord.abc.GuildChannel) -> str:
+        return (
+            f"{Strings.SYSTEM_AI_PROMPT}\n\n"
+            f"[معلومات بيئة السيرفر الحالية]:\n"
+            f"- اسم السيرفر: {guild.name} (ID: {guild.id})\n"
+            f"- العضو الذي يخاطبك: {author.display_name} (ID: {author.id})\n"
+            f"- القناة الحالية: #{channel.name}\n"
+            f"- إجمالي أعضاء السيرفر: {guild.member_count} عضو\n"
+            f"- صلاحياتك: أنت تملك صلاحيات إدارة ودفاع وتحكم كاملة ومطلقة بالسيرفر."
+        )
+
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
         if message.author.bot or not message.guild:
@@ -47,9 +96,7 @@ class AICommandsCog(commands.Cog):
             return
 
         # الرد التلقائي عند منشن البوت (خارج التذاكر)
-        if (
-            self.bot.user in message.mentions
-        ):
+        if self.bot.user in message.mentions:
             clean_content = (
                 message.content
                 .replace(f"<@{self.bot.user.id}>", "")
@@ -59,13 +106,24 @@ class AICommandsCog(commands.Cog):
             if not clean_content:
                 clean_content = "اهلا"
 
+            # 1. فحص طلب استدعاء المشرفين
+            if is_requesting_staff(clean_content):
+                staff_mention = await get_staff_role_mention(message.guild)
+                msg_txt = (
+                    f"🔔 {message.author.mention} **تم استدعاء طاقم الإشراف لمساعدتك:** {staff_mention}\n"
+                    f"> تفضل بطرح تفاصيل استفسارك أو مشكلتك هنا وسيتدخل أحد المشرفين في أقرب وقت."
+                )
+                await message.channel.send(msg_txt)
+                return
+
             self._add_to_context(message.channel.id, message.author.id, "user", clean_content)
 
             async with message.channel.typing():
                 context = self._get_context(message.channel.id, message.author.id)
+                sys_prompt = self._build_system_prompt(message.guild, message.author, message.channel)
                 response = await ai_manager.generate(
                     messages=context,
-                    system_prompt=Strings.SYSTEM_AI_PROMPT
+                    system_prompt=sys_prompt
                 )
                 self._add_to_context(message.channel.id, message.author.id, "assistant", response)
                 self._track_usage(message.guild.id, len(response))
@@ -80,12 +138,23 @@ class AICommandsCog(commands.Cog):
     async def ask(self, interaction: discord.Interaction, question: str):
         await interaction.response.defer()
 
+        # فحص طلب استدعاء المشرفين
+        if is_requesting_staff(question):
+            staff_mention = await get_staff_role_mention(interaction.guild)
+            msg_txt = (
+                f"🔔 {interaction.user.mention} **تم استدعاء طاقم الإشراف لمساعدتك:** {staff_mention}\n"
+                f"> تفضل بطرح تفاصيل استفسارك أو مشكلتك هنا وسيتدخل أحد المشرفين في أقرب وقت."
+            )
+            await interaction.followup.send(msg_txt)
+            return
+
         self._add_to_context(interaction.channel_id, interaction.user.id, "user", question)
         context = self._get_context(interaction.channel_id, interaction.user.id)
 
+        sys_prompt = self._build_system_prompt(interaction.guild, interaction.user, interaction.channel)
         response = await ai_manager.generate(
             messages=context,
-            system_prompt=Strings.SYSTEM_AI_PROMPT
+            system_prompt=sys_prompt
         )
         self._add_to_context(interaction.channel_id, interaction.user.id, "assistant", response)
         self._track_usage(interaction.guild_id, len(response))
@@ -93,6 +162,7 @@ class AICommandsCog(commands.Cog):
         chunks = smart_split(response, max_length=2000)
         await interaction.followup.send(chunks[0])
         for chunk in chunks[1:]:
+            await interaction.channel.send(chunk)
             await interaction.channel.send(chunk)
 
     # ─── /explain_code ────────────────────────────────────────────────────────────

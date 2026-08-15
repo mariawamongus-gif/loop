@@ -350,8 +350,19 @@ class TicketsCog(commands.Cog):
             if not ticket:
                 return
 
-        # أمر switch النصي
-        if message.content.strip().lower() == "switch":
+        # فحص أمر switch أو طلب التحدث مع مشرف بشري
+        import re
+        content_lower = message.content.strip().lower()
+        is_mod_req = (
+            content_lower == "switch" or
+            any(re.search(p, message.content, re.IGNORECASE) for p in [
+                r"مشرف", r"مسؤول", r"مسئول", r"ادمن", r"أدمن", r"إدارة", r"اداره",
+                r"طاقم", r"شخص حقيقي", r"بشري", r"support", r"admin", r"mod", r"staff",
+                r"نادي لي", r"نادي المشرف", r"ابغى اكلم", r"بدي اكلم", r"ممكن اكلم"
+            ])
+        )
+
+        if is_mod_req:
             async with AsyncSessionLocal() as session:
                 t = await session.get(SupportTicket, ticket.ticket_id)
                 if t:
@@ -359,11 +370,25 @@ class TicketsCog(commands.Cog):
                     t.severity = "SERIOUS"
                     await session.commit()
 
+            # جلب منشن رتبة المشرفين
+            staff_mention = "@here"
+            async with AsyncSessionLocal() as session:
+                cfg = await session.get(GuildConfig, message.guild.id)
+                if cfg and cfg.mod_role_id:
+                    mr = message.guild.get_role(cfg.mod_role_id)
+                    if mr:
+                        staff_mention = mr.mention
+                elif cfg and cfg.admin_role_id:
+                    ar = message.guild.get_role(cfg.admin_role_id)
+                    if ar:
+                        staff_mention = ar.mention
+
             embed = create_warning_embed(
-                "تحويل التذكرة للمشرف البشري",
-                "تم تسجيل طلبك وتفعيل وضع الدعم البشري. سيتواصل معك أحد المشرفين قريباً."
+                "تحويل التذكرة للإدارة واستدعاء المشرفين",
+                f"🔔 {message.author.mention} **تم استدعاء طاقم الإشراف بنجاح:** {staff_mention}\n\n"
+                f"> تم إيقاف الردود الآلية، وتفضل بذكر مشكلتك أو استفسارك بالكامل وسيتدخل أحد المشرفين فوراً."
             )
-            await message.channel.send(embed=embed)
+            await message.channel.send(content=staff_mention, embed=embed)
             return
 
         # إعادة جلب حالة التذكرة من DB للتأكد من عدم وجود تغيير (مثل التحويل لبشري)
