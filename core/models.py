@@ -143,3 +143,15 @@ class AnonymousReport(Base):
     evidence_url = Column(Text, nullable=True)
     status = Column(String(20), default="PENDING")
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class MemberHistory(Base):
+    __tablename__ = "member_history"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    guild_id = Column(BigInteger, index=True, nullable=False)
+    user_id = Column(BigInteger, index=True, nullable=False)
+    first_joined_at = Column(DateTime, default=datetime.utcnow)
+    last_joined_at = Column(DateTime, default=datetime.utcnow)
+    join_count = Column(Integer, default=1)
+

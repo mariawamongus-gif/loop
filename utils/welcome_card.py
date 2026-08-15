@@ -34,10 +34,12 @@ async def generate_welcome_card(
     username: str,
     avatar_url: str,
     server_name: str,
-    member_count: int
+    member_count: int,
+    is_rejoin: bool = False
 ) -> io.BytesIO:
     """
-    توليد بطاقة ترحيب فائقة الفخامة بخطوط كبيرة وبارزة جداً ونمط الرخام المنقوش بشعار TS.
+    توليد بطاقة ترحيب فائقة الفخامة بخطوط ضخمة وبارزة جداً ونمط الرخام المنقوش بشعار TS،
+    مع دعم بطاقة مخصصة للعضو العائد بعد مغادرة السيرفر (Welcome Back).
     """
     base_width, base_height = 1376, 768
 
@@ -54,8 +56,8 @@ async def generate_welcome_card(
     draw = ImageDraw.Draw(card)
 
     # ─── 1. فتح وتثبيت صورة الأفاتار في المكان المخصص ────────────────────────
-    avatar_center = (262, 384)
-    avatar_radius = 115
+    avatar_center = (250, 384)
+    avatar_radius = 120
     avatar_size = avatar_radius * 2
 
     avatar_image = None
@@ -85,51 +87,53 @@ async def generate_welcome_card(
     # دمج الأفاتار
     card.paste(avatar_image, (x1, y1), mask)
 
-    # رسم إطار معدني مشطوف حول دائرة الأفاتار
-    draw.ellipse([x1 - 6, y1 - 6, x1 + avatar_size + 6, y1 + avatar_size + 6], outline=(255, 255, 255, 230), width=4)
-    draw.ellipse([x1 - 2, y1 - 2, x1 + avatar_size + 2, y1 + avatar_size + 2], outline=(25, 25, 30, 255), width=4)
+    # إطار معدني مشطوف بارز حول الأفاتار
+    draw.ellipse([x1 - 6, y1 - 6, x1 + avatar_size + 6, y1 + avatar_size + 6], outline=(255, 255, 255, 240), width=5)
+    draw.ellipse([x1 - 2, y1 - 2, x1 + avatar_size + 2, y1 + avatar_size + 2], outline=(20, 20, 25, 255), width=5)
 
-    # ─── 2. الخطوط الكبيرة والنصوص المحفورة ثلاثية الأبعاد ─────────────────────
-    font_welcome = _get_font("georgiab", 52)
-    font_server = _get_font("georgiab", 70)
-    font_user = _get_font("segoeuib", 58)
-    font_count = _get_font("georgiab", 42)
+    # ─── 2. الخطوط الضخمة والنصوص المحفورة ثلاثية الأبعاد ─────────────────────
+    font_welcome = _get_font("georgiab", 58 if is_rejoin else 64)
+    font_server = _get_font("georgiab", 84)
+    font_user = _get_font("segoeuib", 72)
+    font_count = _get_font("georgiab", 50)
 
-    def draw_engraved(pos, text, font, fill=(30, 30, 35, 255)):
-        """رسم نص رخامي منقوش بظل ثلاثي الأبعاد بارز جداً."""
+    def draw_engraved(pos, text, font, fill=(25, 25, 30, 255)):
+        """رسم نص رخامي منقوش بظل ثلاثي الأبعاد بارز جداً وضخم."""
         tx, ty = pos
         # الظل الفاتح السفلي لإبراز النحت
-        draw.text((tx + 3, ty + 3), text, fill=(255, 255, 255, 210), font=font)
+        draw.text((tx + 4, ty + 4), text, fill=(255, 255, 255, 230), font=font)
         # الظل الداكن العلوي للعمق
-        draw.text((tx - 2, ty - 2), text, fill=(10, 10, 15, 150), font=font)
+        draw.text((tx - 2, ty - 2), text, fill=(10, 10, 15, 170), font=font)
         # اللون الأساسي
         draw.text((tx, ty), text, fill=fill, font=font)
 
-    text_x = 430
-    text_y = 160
+    text_x = 405
+    text_y = 135
 
-    # سطر WELCOME TO
-    draw_engraved((text_x, text_y), "WELCOME TO", font_welcome, (70, 70, 80, 255))
+    # سطر الترحيب (Welcome To أو Welcome Back To)
+    welcome_title = "WELCOME BACK TO" if is_rejoin else "WELCOME TO"
+    draw_engraved((text_x, text_y), welcome_title, font_welcome, (65, 65, 75, 255))
 
     # سطر اسم السيرفر
     display_server = server_name.strip().upper()
     if len(display_server) > 16:
         display_server = display_server[:14] + "..."
-    draw_engraved((text_x, text_y + 68), display_server, font_server, (15, 15, 20, 255))
+    draw_engraved((text_x, text_y + 75), display_server, font_server, (15, 15, 20, 255))
 
-    # خط فاصل معدني بارز
-    line_y = text_y + 175
-    draw.line([(text_x, line_y), (text_x + 460, line_y)], fill=(140, 140, 150, 240), width=3)
-    draw.line([(text_x, line_y + 3), (text_x + 460, line_y + 3)], fill=(255, 255, 255, 240), width=3)
+    # خط فاصل معدني عريض
+    line_y = text_y + 195
+    draw.line([(text_x, line_y), (text_x + 520, line_y)], fill=(130, 130, 140, 255), width=4)
+    draw.line([(text_x, line_y + 4), (text_x + 520, line_y + 4)], fill=(255, 255, 255, 255), width=4)
 
     # سطر اسم العضو
     display_user = username.strip()
     if len(display_user) > 16:
         display_user = display_user[:14] + "..."
-    draw_engraved((text_x, text_y + 200), f"@{display_user}", font_user, (25, 25, 35, 255))
+    draw_engraved((text_x, text_y + 225), f"@{display_user}", font_user, (20, 20, 30, 255))
 
-    # سطر رقم العضو
-    draw_engraved((text_x, text_y + 285), f"MEMBER #{member_count}", font_count, (80, 80, 90, 255))
+    # سطر العضو أو العضو العائد
+    sub_tag = "RETURNING MEMBER" if is_rejoin else f"MEMBER #{member_count}"
+    draw_engraved((text_x, text_y + 325), sub_tag, font_count, (70, 70, 80, 255))
 
     buffer = io.BytesIO()
     card.save(buffer, format="PNG", optimize=True)
