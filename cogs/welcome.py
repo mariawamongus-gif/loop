@@ -5,24 +5,15 @@ from sqlalchemy.future import select
 from datetime import datetime
 from core.database import AsyncSessionLocal
 from core.models import GuildConfig
+from core.permissions import is_admin
 from core.strings import Strings
 from utils.embeds import create_neon_embed, create_success_embed
+from utils.welcome_card import generate_welcome_card
 
 
 class WelcomeCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
-
-    def _format_message(self, template: str, member: discord.Member, guild: discord.Guild) -> str:
-        """تنسيق رسالة الترحيب مع placeholders."""
-        return (
-            template
-            .replace("{user}", member.mention)
-            .replace("{username}", member.name)
-            .replace("{server}", guild.name)
-            .replace("{count}", str(guild.member_count))
-            .replace("{id}", str(member.id))
-        )
 
     @commands.Cog.listener()
     async def on_member_join(self, member: discord.Member):
@@ -35,7 +26,7 @@ class WelcomeCog(commands.Cog):
             if not config or not config.welcome_enabled:
                 return
 
-            # إسناد Auto-Role
+            # إسناد Auto-Role تلقائياً
             if config.auto_role_id:
                 role = guild.get_role(config.auto_role_id)
                 if role:
@@ -50,109 +41,59 @@ class WelcomeCog(commands.Cog):
             if config.welcome_channel_id:
                 channel = guild.get_channel(config.welcome_channel_id)
                 if channel:
-                    count = guild.member_count
-                    account_age = (datetime.utcnow() - member.created_at.replace(tzinfo=None)).days
-
-                    # شريط التقدم نحو أقرب هدف
-                    milestones = [50, 100, 250, 500, 1000, 2500, 5000, 10000, 25000, 50000]
-                    next_milestone = milestones[-1]
-                    for m in milestones:
-                        if count < m:
-                            next_milestone = m
-                            break
-                    prev_milestone = 0
-                    for m in milestones:
-                        if m < next_milestone and count >= m:
-                            prev_milestone = m
-
-                    progress_pct = min(
-                        (count - prev_milestone) / max(next_milestone - prev_milestone, 1), 1.0
+                    avatar_url = member.display_avatar.url if member.display_avatar else ""
+                    
+                    # توليد بطاقة الترحيب الرخامية الفاخرة بنمط TS
+                    card_buffer = await generate_welcome_card(
+                        username=member.name,
+                        avatar_url=avatar_url,
+                        server_name=guild.name,
+                        member_count=guild.member_count
                     )
-                    filled = int(progress_pct * 12)
-                    bar = "█" * filled + "░" * (12 - filled)
-
-                    # رسالة مخصصة أو افتراضية
-                    custom_msg = getattr(config, "welcome_message", None) if hasattr(config, "welcome_message") else None
-
-                    desc = (
-                        f"**المعرّف:** {member.mention} (`{member.id}`)\n"
-                        f"**عمر الحساب:** `{account_age}` يوم\n"
-                        f"**العضو رقم:** `#{count}`\n\n"
-                        f"`──────── التقدم نحو الهدف التالي ────────`\n"
-                        f"`{bar}` `{count}/{next_milestone}`"
-                    )
-
-                    if custom_msg:
-                        formatted = self._format_message(custom_msg, member, guild)
-                        desc = f"💬 **{formatted}**\n\n" + desc
-
+                    
+                    file = discord.File(card_buffer, filename=f"welcome_{member.id}.png")
+                    
+                    # رسالة الترحيب مع منشن العضو
+                    content = f"مرحباً بك في **{guild.name}** يا {member.mention}! ✨"
+                    
                     embed = create_neon_embed(
-                        "🎉 عضو جديد انضم! | Member Join",
-                        desc,
-                        color=0x00F5FF
+                        f"✦ أهلاً بك في {guild.name} ✦",
+                        f"نورت السيرفر يا {member.mention} | أنت العضو رقم **#{guild.member_count}** 🎉",
+                        color=0xD4AF37
                     )
-                    embed.set_thumbnail(url=member.display_avatar.url if member.display_avatar else "")
-                    embed.set_author(name=guild.name, icon_url=guild.icon.url if guild.icon else None)
-                    embed.add_field(
-                        name="📅 تاريخ إنشاء الحساب",
-                        value=f"`{member.created_at.strftime('%Y-%m-%d')}`",
-                        inline=True
-                    )
-                    embed.add_field(
-                        name="🏷️ أعلى رول",
-                        value=member.top_role.mention,
-                        inline=True
-                    )
+                    embed.set_image(url=f"attachment://welcome_{member.id}.png")
+                    embed.set_footer(text=f"ID: {member.id} • {guild.name}")
 
                     try:
-                        await channel.send(embed=embed)
+                        await channel.send(content=member.mention, embed=embed, file=file)
                     except Exception:
                         pass
 
-    @commands.Cog.listener()
-    async def on_member_remove(self, member: discord.Member):
-        guild = member.guild
-        async with AsyncSessionLocal() as session:
-            res = await session.execute(
-                select(GuildConfig).where(GuildConfig.guild_id == guild.id)
-            )
-            config = res.scalars().first()
-            if not config or not config.welcome_enabled or config.silent_protocol:
-                return
+    # ─── /test_welcome ──────────────────────────────────────────────────────────
+    @app_commands.command(name="test_welcome", description="معاينة واختبار بطاقة الترحيب الرخامية الفاخرة")
+    async def test_welcome(self, interaction: discord.Interaction):
+        if not await is_admin(interaction):
+            await interaction.response.send_message(Strings.ERROR_PERMISSIONS, ephemeral=True)
+            return
 
-            if config.leave_channel_id:
-                channel = guild.get_channel(config.leave_channel_id)
-                if channel:
-                    stayed_days = 0
-                    if member.joined_at:
-                        stayed_days = (
-                            datetime.utcnow() - member.joined_at.replace(tzinfo=None)
-                        ).days
+        await interaction.response.defer(ephemeral=True)
 
-                    top_role = (
-                        member.top_role.name
-                        if member.top_role and member.top_role.name != "@everyone"
-                        else "بدون رول"
-                    )
+        avatar_url = interaction.user.display_avatar.url if interaction.user.display_avatar else ""
+        card_buffer = await generate_welcome_card(
+            username=interaction.user.name,
+            avatar_url=avatar_url,
+            server_name=interaction.guild.name,
+            member_count=interaction.guild.member_count
+        )
 
-                    desc = (
-                        f"**العضو:** `{member.name}` (`{member.id}`)\n"
-                        f"**مدة التواجد:** `{stayed_days}` يوم\n"
-                        f"**أعلى رول كان:** `{top_role}`\n"
-                        f"**الأعضاء المتبقون:** `{guild.member_count}`"
-                    )
-
-                    embed = create_neon_embed(
-                        "👋 مغادرة | Member Leave",
-                        desc,
-                        color=0xFF5555
-                    )
-                    embed.set_thumbnail(url=member.display_avatar.url if member.display_avatar else "")
-
-                    try:
-                        await channel.send(embed=embed)
-                    except Exception:
-                        pass
+        file = discord.File(card_buffer, filename="welcome_preview.png")
+        embed = create_neon_embed(
+            f"✦ معاينة بطاقة الترحيب الرخامية | {interaction.guild.name} ✦",
+            f"هذا نموذج بطاقة الترحيب الفاخرة المنقوشة بشعار **TS** عند انضمام عضو جديد! 🎉",
+            color=0xD4AF37
+        )
+        embed.set_image(url="attachment://welcome_preview.png")
+        await interaction.followup.send(embed=embed, file=file, ephemeral=True)
 
 
 async def setup(bot: commands.Bot):

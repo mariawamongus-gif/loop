@@ -180,7 +180,6 @@ def _build_system_embed(title: str, config, system: str) -> discord.Embed:
     elif system == "welcome":
         channels = (
             f"\n👋 **قناة الترحيب:** {_ch(config.welcome_channel_id)}"
-            f"\n👋 **قناة الوداع:** {_ch(config.leave_channel_id)}"
             f"\n🏷️ **رول انضمام تلقائي:** {_rl(config.auto_role_id)}"
         )
     elif system == "tickets":
@@ -295,15 +294,14 @@ class WelcomeSettingsView(discord.ui.View):
     def __init__(self, guild_id: int, config):
         super().__init__(timeout=180)
         self.guild_id = guild_id
-        self.add_item(ChannelSetSelect("welcome_channel_id", "اختر قناة الترحيب...", row=0))
-        self.add_item(ChannelSetSelect("leave_channel_id", "اختر قناة الوداع...", row=1))
-        self.add_item(RoleSetSelect("auto_role_id", "اختر رول الانضمام التلقائي (Auto-Role)...", row=2))
+        self.add_item(ChannelSetSelect("welcome_channel_id", "اختر قناة الترحيب (Welcome)...", row=0))
+        self.add_item(RoleSetSelect("auto_role_id", "اختر رول الانضمام التلقائي (Auto-Role)...", row=1))
 
-    @discord.ui.button(label="تفعيل / تعطيل", style=discord.ButtonStyle.primary, emoji="⚡", row=4)
+    @discord.ui.button(label="تفعيل / تعطيل", style=discord.ButtonStyle.primary, emoji="⚡", row=3)
     async def toggle(self, interaction: discord.Interaction, button: discord.ui.Button):
         await _toggle_system(interaction, self.guild_id, "welcome")
 
-    @discord.ui.button(label="رجوع", style=discord.ButtonStyle.secondary, emoji="◀", row=4)
+    @discord.ui.button(label="رجوع", style=discord.ButtonStyle.secondary, emoji="◀", row=3)
     async def back(self, interaction: discord.Interaction, button: discord.ui.Button):
         await _go_back(interaction, self.guild_id)
 
