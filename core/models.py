@@ -17,6 +17,7 @@ class GuildConfig(Base):
     stats_channel_id = Column(BigInteger, nullable=True)
     report_channel_id = Column(BigInteger, nullable=True)
     temp_voice_channel_id = Column(BigInteger, nullable=True)
+    leveling_channel_id = Column(BigInteger, nullable=True)
 
     confidence_threshold = Column(Float, default=0.80)
     witness_required = Column(Integer, default=2)

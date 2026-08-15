@@ -621,6 +621,99 @@ class ModerationCog(commands.Cog):
         except Exception as e:
             await interaction.response.send_message(f"فشل رفع الكتم: {e}", ephemeral=True)
 
+    # ─── /audit ─────────────────────────────────────────────────────────────────
+    @app_commands.command(name="audit", description="عرض آخر الإجراءات والأحداث اللي صارت بالسيرفر من الـ Audit Log")
+    @app_commands.describe(count="عدد الإجراءات المراد عرضها (الافتراضي 15)")
+    async def audit(self, interaction: discord.Interaction, count: int = 15):
+        if not await is_mod(interaction):
+            await interaction.response.send_message(Strings.ERROR_PERMISSIONS, ephemeral=True)
+            return
+
+        if not interaction.guild.me.guild_permissions.view_audit_log:
+            await interaction.response.send_message("البوت لا يملك صلاحية `View Audit Log`.", ephemeral=True)
+            return
+
+        await interaction.response.defer(ephemeral=True)
+
+        count = min(max(count, 1), 25)
+
+        # تسميات الإجراءات بالعربي
+        action_labels = {
+            discord.AuditLogAction.kick: "👢 طرد",
+            discord.AuditLogAction.ban: "🔨 حظر",
+            discord.AuditLogAction.unban: "✅ رفع حظر",
+            discord.AuditLogAction.member_update: "👤 تعديل عضو",
+            discord.AuditLogAction.member_role_update: "🏷️ تعديل رولات",
+            discord.AuditLogAction.member_disconnect: "📴 فصل من الصوت",
+            discord.AuditLogAction.member_move: "🔀 نقل بالصوت",
+            discord.AuditLogAction.channel_create: "➕ إنشاء قناة",
+            discord.AuditLogAction.channel_delete: "🗑️ حذف قناة",
+            discord.AuditLogAction.channel_update: "✏️ تعديل قناة",
+            discord.AuditLogAction.role_create: "🆕 إنشاء رول",
+            discord.AuditLogAction.role_delete: "❌ حذف رول",
+            discord.AuditLogAction.role_update: "🔧 تعديل رول",
+            discord.AuditLogAction.message_delete: "🗑️ حذف رسالة",
+            discord.AuditLogAction.message_bulk_delete: "🗑️ حذف رسائل جماعي",
+            discord.AuditLogAction.overwrite_create: "🔒 تعديل أذونات",
+            discord.AuditLogAction.overwrite_update: "🔒 تعديل أذونات",
+            discord.AuditLogAction.overwrite_delete: "🔓 حذف أذونات",
+        }
+
+        lines = []
+        entry_count = 0
+        async for entry in interaction.guild.audit_logs(limit=count):
+            entry_count += 1
+            label = action_labels.get(entry.action, f"⚙️ {entry.action.name}")
+
+            who = entry.user.mention if entry.user else "`غير معروف`"
+            target_str = ""
+            if entry.target:
+                if isinstance(entry.target, (discord.Member, discord.User)):
+                    target_str = f" → {entry.target.mention}"
+                elif isinstance(entry.target, discord.Role):
+                    target_str = f" → @{entry.target.name}"
+                elif hasattr(entry.target, 'name'):
+                    target_str = f" → #{entry.target.name}"
+                else:
+                    target_str = f" → `{entry.target}`"
+
+            reason_str = f"\n  ↳ السبب: *{entry.reason}*" if entry.reason else ""
+
+            # تنسيق الوقت
+            time_str = ""
+            if entry.created_at:
+                time_str = f" <t:{int(entry.created_at.timestamp())}:R>"
+
+            # فحص تغييرات خاصة (mute/deafen)
+            extra = ""
+            if entry.action == discord.AuditLogAction.member_update and entry.changes:
+                for change in entry.changes:
+                    if change.key == "mute":
+                        extra = " 🔇 **Mute**" if change.after else " 🔊 **Unmute**"
+                    elif change.key == "deaf":
+                        extra = " 🔇 **Deafen**" if change.after else " 🔊 **Undeafen**"
+                    elif change.key == "timed_out_until":
+                        extra = " ⏱️ **Timeout**" if change.after else " ✅ **رفع Timeout**"
+
+            lines.append(f"{label}{extra} — {who}{target_str}{time_str}{reason_str}")
+
+        if not lines:
+            await interaction.followup.send("لا يوجد سجلات حديثة في الـ Audit Log.", ephemeral=True)
+            return
+
+        desc = "\n\n".join(lines)
+        if len(desc) > 4000:
+            desc = desc[:4000] + "\n..."
+
+        embed = create_neon_embed(
+            f"سجل الأحداث | آخر {entry_count} إجراء",
+            desc,
+            color=0x5865F2
+        )
+        embed.set_footer(text=f"طلب بواسطة {interaction.user.display_name}")
+        await interaction.followup.send(embed=embed, ephemeral=True)
+
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(ModerationCog(bot))
+

@@ -68,7 +68,14 @@ class LevelingCog(commands.Cog):
                         color=0x00F5FF
                     )
                     try:
-                        await message.channel.send(embed=embed)
+                        # إرسال الإشعار للقناة المخصصة إن وُجدت، وإلا لنفس الشات
+                        target_ch = message.channel
+                        lvl_ch_id = getattr(config, 'leveling_channel_id', None)
+                        if lvl_ch_id:
+                            found = message.guild.get_channel(lvl_ch_id)
+                            if found:
+                                target_ch = found
+                        await target_ch.send(embed=embed)
                     except Exception:
                         pass
 

@@ -11,13 +11,18 @@ async def init_db():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
         
-        # SQLite Auto-Migration: فحص الأعمدة المضافة حديثاً وإضافتها تلقائياً إن لم تكن موجودة
+        # SQLite Auto-Migration: إضافة أي أعمدة جديدة تلقائياً
         try:
             from sqlalchemy import text
             res = await conn.execute(text("PRAGMA table_info(guild_configs);"))
             columns = [row[1] for row in res.fetchall()]
-            if "temp_voice_channel_id" not in columns:
-                await conn.execute(text("ALTER TABLE guild_configs ADD COLUMN temp_voice_channel_id BIGINT;"))
+            new_cols = {
+                "temp_voice_channel_id": "BIGINT",
+                "leveling_channel_id": "BIGINT",
+            }
+            for col_name, col_type in new_cols.items():
+                if col_name not in columns:
+                    await conn.execute(text(f"ALTER TABLE guild_configs ADD COLUMN {col_name} {col_type};"))
         except Exception:
             pass
 

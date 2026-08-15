@@ -11,6 +11,72 @@ from utils.decision_log import log_decision
 
 
 # ═══════════════════════════════════════════════════
+# مكون اختيار القنوات العام - يُستخدم في كل الأنظمة
+# ═══════════════════════════════════════════════════
+
+class ChannelSetSelect(discord.ui.ChannelSelect):
+    """ChannelSelect عام يحفظ القناة المختارة في العمود المحدد من GuildConfig."""
+    def __init__(self, db_field: str, placeholder: str, ch_types=None, row: int = 0):
+        super().__init__(
+            placeholder=placeholder,
+            channel_types=ch_types or [discord.ChannelType.text],
+            min_values=1, max_values=1, row=row
+        )
+        self.db_field = db_field
+
+    async def callback(self, interaction: discord.Interaction):
+        channel = self.values[0]
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(select(GuildConfig).where(GuildConfig.guild_id == interaction.guild_id))
+            config = result.scalars().first()
+            if config:
+                setattr(config, self.db_field, channel.id)
+                await session.commit()
+        embed = create_neon_embed("تم الضبط", f"تم تحديد القناة: {channel.mention}")
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+
+class CategorySetSelect(discord.ui.ChannelSelect):
+    """ChannelSelect لاختيار فئة (Category)."""
+    def __init__(self, db_field: str, placeholder: str, row: int = 0):
+        super().__init__(
+            placeholder=placeholder,
+            channel_types=[discord.ChannelType.category],
+            min_values=1, max_values=1, row=row
+        )
+        self.db_field = db_field
+
+    async def callback(self, interaction: discord.Interaction):
+        channel = self.values[0]
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(select(GuildConfig).where(GuildConfig.guild_id == interaction.guild_id))
+            config = result.scalars().first()
+            if config:
+                setattr(config, self.db_field, channel.id)
+                await session.commit()
+        embed = create_neon_embed("تم الضبط", f"تم تحديد الفئة: {channel.mention}")
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+
+class RoleSetSelect(discord.ui.RoleSelect):
+    """RoleSelect عام يحفظ الرول في العمود المحدد."""
+    def __init__(self, db_field: str, placeholder: str, row: int = 0):
+        super().__init__(placeholder=placeholder, min_values=1, max_values=1, row=row)
+        self.db_field = db_field
+
+    async def callback(self, interaction: discord.Interaction):
+        role = self.values[0]
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(select(GuildConfig).where(GuildConfig.guild_id == interaction.guild_id))
+            config = result.scalars().first()
+            if config:
+                setattr(config, self.db_field, role.id)
+                await session.commit()
+        embed = create_neon_embed("تم الضبط", f"تم تحديد الرول: {role.mention}")
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+
+# ═══════════════════════════════════════════════════
 # الشاشة الرئيسية للإعدادات - Main Setup Dashboard
 # ═══════════════════════════════════════════════════
 
@@ -22,15 +88,15 @@ class SetupDashboardView(discord.ui.View):
     @discord.ui.select(
         placeholder="اختر النظام الذي تريد ضبطه...",
         options=[
-            discord.SelectOption(label="الحماية والأمان", value="protection", emoji="1\ufe0f\u20e3", description="Anti-Raid / Anti-Nuke / Anti-Spam"),
-            discord.SelectOption(label="التذاكر والدعم الفني", value="tickets", emoji="2\ufe0f\u20e3", description="تذاكر AI والتصعيد والأرشفة"),
-            discord.SelectOption(label="المستويات والخبرة", value="leveling", emoji="3\ufe0f\u20e3", description="نظام XP وبطاقات الرانك"),
-            discord.SelectOption(label="الترحيب والوداع", value="welcome", emoji="4\ufe0f\u20e3", description="رسائل الانضمام والمغادرة"),
-            discord.SelectOption(label="السجلات والتدقيق", value="logging", emoji="5\ufe0f\u20e3", description="سجلات الأحداث والقرارات"),
-            discord.SelectOption(label="الإحصائيات والتقارير", value="stats", emoji="6\ufe0f\u20e3", description="التقارير الدورية والإحصائيات"),
-            discord.SelectOption(label="الذكاء الاصطناعي", value="ai", emoji="7\ufe0f\u20e3", description="إعدادات Neon AI والمزودين"),
-            discord.SelectOption(label="بروتوكول الصمت", value="silent", emoji="8\ufe0f\u20e3", description="إيقاف جميع التفاعلات الاجتماعية"),
-            discord.SelectOption(label="تفويض الرتب والصلاحيات", value="roles", emoji="👑", description="ضبط رتب المستوى الماكس والتكتيكي والحصانة"),
+            discord.SelectOption(label="الحماية والأمان", value="protection", emoji="🛡️", description="Anti-Raid / Anti-Nuke / Anti-Spam"),
+            discord.SelectOption(label="التذاكر والدعم الفني", value="tickets", emoji="🎫", description="فئة التذاكر وإعداداتها"),
+            discord.SelectOption(label="المستويات والخبرة", value="leveling", emoji="⭐", description="قناة الليفل أب ونظام XP"),
+            discord.SelectOption(label="الترحيب والوداع", value="welcome", emoji="👋", description="قنوات الترحيب والمغادرة والأوتو رول"),
+            discord.SelectOption(label="السجلات والتدقيق", value="logging", emoji="📋", description="قناة سجلات الأحداث"),
+            discord.SelectOption(label="الإحصائيات والتقارير", value="stats", emoji="📊", description="قناة التقارير الدورية"),
+            discord.SelectOption(label="الذكاء الاصطناعي", value="ai", emoji="🤖", description="تفعيل/تعطيل Neon AI"),
+            discord.SelectOption(label="بروتوكول الصمت", value="silent", emoji="🔇", description="إيقاف جميع التفاعلات"),
+            discord.SelectOption(label="تفويض الرتب والصلاحيات", value="roles", emoji="👑", description="ضبط رتب الماكس والتكتيكي والحصانة"),
         ]
     )
     async def select_system(self, interaction: discord.Interaction, select_menu: discord.ui.Select):
@@ -45,46 +111,49 @@ class SetupDashboardView(discord.ui.View):
                 await session.commit()
                 await session.refresh(config)
 
-        # توجيه لكل نظام حسب نوعه
         if system == "protection":
             view = ProtectionSettingsView(self.guild_id, config)
-            embed = _build_system_embed("الحماية والأمان | Protection", config, "protection")
+            embed = _build_system_embed("الحماية والأمان", config, "protection")
         elif system == "tickets":
             view = TicketsSettingsView(self.guild_id, config)
-            embed = _build_system_embed("التذاكر والدعم الفني | Tickets", config, "tickets")
+            embed = _build_system_embed("التذاكر والدعم الفني", config, "tickets")
         elif system == "leveling":
-            view = ToggleOnlyView(self.guild_id, "leveling")
-            embed = _build_system_embed("المستويات والخبرة | Leveling", config, "leveling")
+            view = LevelingSettingsView(self.guild_id, config)
+            embed = _build_system_embed("المستويات والخبرة", config, "leveling")
         elif system == "welcome":
             view = WelcomeSettingsView(self.guild_id, config)
-            embed = _build_system_embed("الترحيب والوداع | Welcome", config, "welcome")
+            embed = _build_system_embed("الترحيب والوداع", config, "welcome")
         elif system == "logging":
             view = LoggingSettingsView(self.guild_id, config)
-            embed = _build_system_embed("السجلات والتدقيق | Logging", config, "logging")
+            embed = _build_system_embed("السجلات والتدقيق", config, "logging")
         elif system == "stats":
             view = StatsSettingsView(self.guild_id, config)
-            embed = _build_system_embed("الإحصائيات والتقارير | Stats", config, "stats")
+            embed = _build_system_embed("الإحصائيات والتقارير", config, "stats")
         elif system == "ai":
             view = ToggleOnlyView(self.guild_id, "ai")
-            embed = _build_system_embed("الذكاء الاصطناعي | AI", config, "ai")
+            embed = _build_system_embed("الذكاء الاصطناعي", config, "ai")
         elif system == "silent":
             view = ToggleOnlyView(self.guild_id, "silent")
-            embed = _build_system_embed("بروتوكول الصمت | Silent Protocol", config, "silent")
+            embed = _build_system_embed("بروتوكول الصمت", config, "silent")
         elif system == "roles":
             from cogs.role_selector import RoleSelectorView
             view = RoleSelectorView()
             desc = (
                 "استخدم القوائم أدناه لتفويض الرتب والصلاحيات:\n"
-                "• **🔴 المستوى الماكس:** للأوامر الخطيرة والإعدادات والقفل.\n"
-                "• **🟡 المستوى التكتيكي:** لأوامر الإشراف والعقوبات والمسح.\n"
-                "• **🟢 مستوى الحصانة:** للإعفاء من الفلاتر والمود الذكي."
+                "• **المستوى الماكس:** للأوامر الخطيرة والإعدادات والقفل.\n"
+                "• **المستوى التكتيكي:** لأوامر الإشراف والعقوبات.\n"
+                "• **مستوى الحصانة:** للإعفاء من الفلاتر."
             )
-            embed = create_neon_embed("تفويض الرتب والصلاحيات | Role Matrix", desc, color=0x5865F2)
+            embed = create_neon_embed("تفويض الرتب والصلاحيات", desc, color=0x5865F2)
         else:
             return
 
         await interaction.response.edit_message(embed=embed, view=view)
 
+
+# ═══════════════════════════════════════════════════
+# بناء الـ Embed لكل نظام مع عرض القناة المخصصة
+# ═══════════════════════════════════════════════════
 
 def _get_status(config, system: str) -> str:
     if system == "silent":
@@ -93,31 +162,38 @@ def _get_status(config, system: str) -> str:
     return "مفعّل" if getattr(config, field, False) else "معطّل"
 
 
+def _ch(val):
+    return f"<#{val}>" if val else "`غير محدد`"
+
+def _rl(val):
+    return f"<@&{val}>" if val else "`غير محدد`"
+
+
 def _build_system_embed(title: str, config, system: str) -> discord.Embed:
     status = _get_status(config, system)
     status_icon = "`ON`" if status == "مفعّل" else "`OFF`"
 
-    channel_info = ""
-    if system == "logging" and config.log_channel_id:
-        channel_info = f"\n**قناة السجلات:** <#{config.log_channel_id}>"
+    # عرض القنوات المخصصة لكل نظام
+    channels = ""
+    if system == "logging":
+        channels = f"\n📋 **قناة السجلات:** {_ch(config.log_channel_id)}"
     elif system == "welcome":
-        if config.welcome_channel_id:
-            channel_info += f"\n**قناة الترحيب:** <#{config.welcome_channel_id}>"
-        if config.leave_channel_id:
-            channel_info += f"\n**قناة الوداع:** <#{config.leave_channel_id}>"
-        if config.auto_role_id:
-            channel_info += f"\n**رول الانضمام التلقائي:** <@&{config.auto_role_id}>"
-    elif system == "tickets" and config.ticket_category_id:
-        channel_info = f"\n**فئة التذاكر:** <#{config.ticket_category_id}>"
-    elif system == "stats" and config.report_channel_id:
-        channel_info = f"\n**قناة التقارير:** <#{config.report_channel_id}>"
+        channels = (
+            f"\n👋 **قناة الترحيب:** {_ch(config.welcome_channel_id)}"
+            f"\n👋 **قناة الوداع:** {_ch(config.leave_channel_id)}"
+            f"\n🏷️ **رول انضمام تلقائي:** {_rl(config.auto_role_id)}"
+        )
+    elif system == "tickets":
+        channels = f"\n🎫 **فئة التذاكر:** {_ch(config.ticket_category_id)}"
+    elif system == "stats":
+        channels = f"\n📊 **قناة التقارير:** {_ch(config.report_channel_id)}"
+    elif system == "leveling":
+        channels = f"\n⭐ **قناة الليفل أب:** {_ch(getattr(config, 'leveling_channel_id', None))}"
 
     desc = (
-        f"`──────── الحالة الحالية ────────`\n"
-        f"**النظام:** {status_icon} {status}\n"
-        f"{channel_info}\n\n"
-        f"`──────── الخيارات المتاحة ────────`\n"
-        f"استخدم الأزرار والقوائم أدناه لضبط الإعدادات."
+        f"**الحالة:** {status_icon} {status}\n"
+        f"{channels}\n\n"
+        f"استخدم القوائم والأزرار أدناه لضبط الإعدادات."
     )
     return create_neon_embed(f"إعدادات | {title}", desc)
 
@@ -132,11 +208,11 @@ class ToggleOnlyView(discord.ui.View):
         self.guild_id = guild_id
         self.system = system
 
-    @discord.ui.button(label="تفعيل / تعطيل", style=discord.ButtonStyle.primary, emoji="\u26a1")
+    @discord.ui.button(label="تفعيل / تعطيل", style=discord.ButtonStyle.primary, emoji="⚡")
     async def toggle(self, interaction: discord.Interaction, button: discord.ui.Button):
         await _toggle_system(interaction, self.guild_id, self.system)
 
-    @discord.ui.button(label="رجوع للقائمة الرئيسية", style=discord.ButtonStyle.secondary, emoji="\u25c0")
+    @discord.ui.button(label="رجوع", style=discord.ButtonStyle.secondary, emoji="◀")
     async def back(self, interaction: discord.Interaction, button: discord.ui.Button):
         await _go_back(interaction, self.guild_id)
 
@@ -150,156 +226,122 @@ class ProtectionSettingsView(discord.ui.View):
         super().__init__(timeout=180)
         self.guild_id = guild_id
 
-    @discord.ui.button(label="تفعيل / تعطيل", style=discord.ButtonStyle.primary, emoji="\u26a1")
+    @discord.ui.button(label="تفعيل / تعطيل", style=discord.ButtonStyle.primary, emoji="⚡")
     async def toggle(self, interaction: discord.Interaction, button: discord.ui.Button):
         await _toggle_system(interaction, self.guild_id, "protection")
 
     @discord.ui.select(
-        placeholder="ضبط حساسية Anti-Raid (عدد الانضمام قبل Lockdown)...",
+        placeholder="حساسية Anti-Raid (عدد الانضمام قبل Lockdown)...",
         options=[
-            discord.SelectOption(label="5 أعضاء / 10 ثوانٍ (حساسية عالية)", value="5"),
+            discord.SelectOption(label="5 أعضاء / 10 ثوانٍ (عالية)", value="5"),
             discord.SelectOption(label="7 أعضاء / 10 ثوانٍ (افتراضي)", value="7"),
-            discord.SelectOption(label="10 أعضاء / 10 ثوانٍ (حساسية منخفضة)", value="10"),
-            discord.SelectOption(label="15 عضو / 10 ثوانٍ (سيرفرات كبيرة)", value="15"),
+            discord.SelectOption(label="10 أعضاء / 10 ثوانٍ (منخفضة)", value="10"),
+            discord.SelectOption(label="15 عضو / 10 ثوانٍ (كبيرة)", value="15"),
         ]
     )
     async def raid_sensitivity(self, interaction: discord.Interaction, select_menu: discord.ui.Select):
         val = select_menu.values[0]
-        embed = create_neon_embed("تم الضبط", f"تم تحديد حساسية Anti-Raid على `{val}` أعضاء / 10 ثوانٍ.")
+        embed = create_neon_embed("تم الضبط", f"حساسية Anti-Raid: `{val}` أعضاء / 10 ثوانٍ.")
         await interaction.response.edit_message(embed=embed, view=self)
 
-    @discord.ui.button(label="رجوع", style=discord.ButtonStyle.secondary, emoji="\u25c0")
+    @discord.ui.button(label="رجوع", style=discord.ButtonStyle.secondary, emoji="◀")
     async def back(self, interaction: discord.Interaction, button: discord.ui.Button):
         await _go_back(interaction, self.guild_id)
 
 
 # ═══════════════════════════════════════════════════
-# إعدادات التذاكر - Tickets Settings
+# إعدادات التذاكر - Tickets (تخصيص فئة القناة)
 # ═══════════════════════════════════════════════════
-
-class TicketsCategorySelect(discord.ui.ChannelSelect):
-    def __init__(self):
-        super().__init__(
-            placeholder="اختر فئة (Category) لقنوات التذاكر...",
-            channel_types=[discord.ChannelType.category],
-            min_values=1, max_values=1
-        )
-
-    async def callback(self, interaction: discord.Interaction):
-        channel = self.values[0]
-        async with AsyncSessionLocal() as session:
-            result = await session.execute(select(GuildConfig).where(GuildConfig.guild_id == interaction.guild_id))
-            config = result.scalars().first()
-            if config:
-                config.ticket_category_id = channel.id
-                await session.commit()
-        embed = create_neon_embed("تم الضبط", f"تم تحديد فئة التذاكر: {channel.mention}")
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-
 
 class TicketsSettingsView(discord.ui.View):
     def __init__(self, guild_id: int, config):
         super().__init__(timeout=180)
         self.guild_id = guild_id
-        self.add_item(TicketsCategorySelect())
+        self.add_item(CategorySetSelect("ticket_category_id", "اختر فئة (Category) لقنوات التذاكر...", row=0))
 
-    @discord.ui.button(label="تفعيل / تعطيل", style=discord.ButtonStyle.primary, emoji="\u26a1")
+    @discord.ui.button(label="تفعيل / تعطيل", style=discord.ButtonStyle.primary, emoji="⚡", row=2)
     async def toggle(self, interaction: discord.Interaction, button: discord.ui.Button):
         await _toggle_system(interaction, self.guild_id, "tickets")
 
-    @discord.ui.button(label="رجوع", style=discord.ButtonStyle.secondary, emoji="\u25c0")
+    @discord.ui.button(label="رجوع", style=discord.ButtonStyle.secondary, emoji="◀", row=2)
     async def back(self, interaction: discord.Interaction, button: discord.ui.Button):
         await _go_back(interaction, self.guild_id)
 
 
 # ═══════════════════════════════════════════════════
-# إعدادات الترحيب - Welcome Settings
+# إعدادات المستويات - Leveling (تخصيص قناة الليفل أب)
 # ═══════════════════════════════════════════════════
 
-class WelcomeChannelSelect(discord.ui.ChannelSelect):
-    def __init__(self, field: str, placeholder: str):
-        super().__init__(placeholder=placeholder, channel_types=[discord.ChannelType.text], min_values=1, max_values=1)
-        self.field = field
+class LevelingSettingsView(discord.ui.View):
+    def __init__(self, guild_id: int, config):
+        super().__init__(timeout=180)
+        self.guild_id = guild_id
+        self.add_item(ChannelSetSelect("leveling_channel_id", "اختر قناة إشعارات الليفل أب...", row=0))
 
-    async def callback(self, interaction: discord.Interaction):
-        channel = self.values[0]
-        async with AsyncSessionLocal() as session:
-            result = await session.execute(select(GuildConfig).where(GuildConfig.guild_id == interaction.guild_id))
-            config = result.scalars().first()
-            if config:
-                setattr(config, self.field, channel.id)
-                await session.commit()
-        embed = create_neon_embed("تم الضبط", f"تم تحديد القناة: {channel.mention}")
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+    @discord.ui.button(label="تفعيل / تعطيل", style=discord.ButtonStyle.primary, emoji="⚡", row=2)
+    async def toggle(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await _toggle_system(interaction, self.guild_id, "leveling")
+
+    @discord.ui.button(label="رجوع", style=discord.ButtonStyle.secondary, emoji="◀", row=2)
+    async def back(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await _go_back(interaction, self.guild_id)
 
 
-class WelcomeAutoRoleSelect(discord.ui.RoleSelect):
-    def __init__(self):
-        super().__init__(placeholder="اختر رول الانضمام التلقائي (Auto-Role)...", min_values=1, max_values=1)
-
-    async def callback(self, interaction: discord.Interaction):
-        role = self.values[0]
-        async with AsyncSessionLocal() as session:
-            result = await session.execute(select(GuildConfig).where(GuildConfig.guild_id == interaction.guild_id))
-            config = result.scalars().first()
-            if config:
-                config.auto_role_id = role.id
-                await session.commit()
-        embed = create_neon_embed("تم الضبط", f"تم تحديد رول الانضمام التلقائي: {role.mention}")
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-
+# ═══════════════════════════════════════════════════
+# إعدادات الترحيب - Welcome (3 قنوات + رول)
+# ═══════════════════════════════════════════════════
 
 class WelcomeSettingsView(discord.ui.View):
     def __init__(self, guild_id: int, config):
         super().__init__(timeout=180)
         self.guild_id = guild_id
-        self.add_item(WelcomeChannelSelect("welcome_channel_id", "اختر قناة الترحيب..."))
-        self.add_item(WelcomeChannelSelect("leave_channel_id", "اختر قناة الوداع..."))
-        self.add_item(WelcomeAutoRoleSelect())
+        self.add_item(ChannelSetSelect("welcome_channel_id", "اختر قناة الترحيب...", row=0))
+        self.add_item(ChannelSetSelect("leave_channel_id", "اختر قناة الوداع...", row=1))
+        self.add_item(RoleSetSelect("auto_role_id", "اختر رول الانضمام التلقائي (Auto-Role)...", row=2))
 
-    @discord.ui.button(label="تفعيل / تعطيل", style=discord.ButtonStyle.primary, emoji="\u26a1", row=4)
+    @discord.ui.button(label="تفعيل / تعطيل", style=discord.ButtonStyle.primary, emoji="⚡", row=4)
     async def toggle(self, interaction: discord.Interaction, button: discord.ui.Button):
         await _toggle_system(interaction, self.guild_id, "welcome")
 
-    @discord.ui.button(label="رجوع", style=discord.ButtonStyle.secondary, emoji="\u25c0", row=4)
+    @discord.ui.button(label="رجوع", style=discord.ButtonStyle.secondary, emoji="◀", row=4)
     async def back(self, interaction: discord.Interaction, button: discord.ui.Button):
         await _go_back(interaction, self.guild_id)
 
 
 # ═══════════════════════════════════════════════════
-# إعدادات السجلات - Logging Settings
+# إعدادات السجلات - Logging (تخصيص قناة السجلات)
 # ═══════════════════════════════════════════════════
 
 class LoggingSettingsView(discord.ui.View):
     def __init__(self, guild_id: int, config):
         super().__init__(timeout=180)
         self.guild_id = guild_id
-        self.add_item(WelcomeChannelSelect("log_channel_id", "اختر قناة السجلات (Audit Log)..."))
+        self.add_item(ChannelSetSelect("log_channel_id", "اختر قناة السجلات (Audit Log)...", row=0))
 
-    @discord.ui.button(label="تفعيل / تعطيل", style=discord.ButtonStyle.primary, emoji="\u26a1")
+    @discord.ui.button(label="تفعيل / تعطيل", style=discord.ButtonStyle.primary, emoji="⚡", row=2)
     async def toggle(self, interaction: discord.Interaction, button: discord.ui.Button):
         await _toggle_system(interaction, self.guild_id, "logging")
 
-    @discord.ui.button(label="رجوع", style=discord.ButtonStyle.secondary, emoji="\u25c0")
+    @discord.ui.button(label="رجوع", style=discord.ButtonStyle.secondary, emoji="◀", row=2)
     async def back(self, interaction: discord.Interaction, button: discord.ui.Button):
         await _go_back(interaction, self.guild_id)
 
 
 # ═══════════════════════════════════════════════════
-# إعدادات التقارير - Stats Settings
+# إعدادات التقارير - Stats (تخصيص قناة التقارير)
 # ═══════════════════════════════════════════════════
 
 class StatsSettingsView(discord.ui.View):
     def __init__(self, guild_id: int, config):
         super().__init__(timeout=180)
         self.guild_id = guild_id
-        self.add_item(WelcomeChannelSelect("report_channel_id", "اختر قناة التقارير الأسبوعية..."))
+        self.add_item(ChannelSetSelect("report_channel_id", "اختر قناة التقارير الدورية...", row=0))
 
-    @discord.ui.button(label="تفعيل / تعطيل", style=discord.ButtonStyle.primary, emoji="\u26a1")
+    @discord.ui.button(label="تفعيل / تعطيل", style=discord.ButtonStyle.primary, emoji="⚡", row=2)
     async def toggle(self, interaction: discord.Interaction, button: discord.ui.Button):
         await _toggle_system(interaction, self.guild_id, "stats")
 
-    @discord.ui.button(label="رجوع", style=discord.ButtonStyle.secondary, emoji="\u25c0")
+    @discord.ui.button(label="رجوع", style=discord.ButtonStyle.secondary, emoji="◀", row=2)
     async def back(self, interaction: discord.Interaction, button: discord.ui.Button):
         await _go_back(interaction, self.guild_id)
 
@@ -327,7 +369,7 @@ async def _toggle_system(interaction: discord.Interaction, guild_id: int, system
     status_text = "مفعّل" if status else "معطّل"
     embed = create_neon_embed(
         "تم تحديث الإعدادات",
-        f"**النظام:** `{system.upper()}`\n**الحالة الجديدة:** `{status_text}`",
+        f"**النظام:** `{system.upper()}`\n**الحالة:** `{status_text}`",
         color=0x50FA7B if status else 0xFF5555
     )
     await interaction.response.edit_message(embed=embed, view=None)
@@ -349,20 +391,18 @@ async def _go_back(interaction: discord.Interaction, guild_id: int):
 
 def _build_dashboard_embed(guild) -> discord.Embed:
     desc = (
-        "مرحباً بك في لوحة التحكم المركزية.\n\n"
-        "`──────── الأنظمة المتاحة ────────`\n"
-        "**1.** الحماية والأمان (Anti-Raid / Nuke / Spam)\n"
-        "**2.** التذاكر والدعم الفني (AI Tickets)\n"
-        "**3.** المستويات والخبرة (XP / Ranks)\n"
-        "**4.** الترحيب والوداع (Welcome / Leave)\n"
-        "**5.** السجلات والتدقيق (Audit Logs)\n"
-        "**6.** الإحصائيات والتقارير (Stats)\n"
-        "**7.** الذكاء الاصطناعي (AI Config)\n"
-        "**8.** بروتوكول الصمت (Silent Protocol)\n\n"
-        "`──────── التعليمات ────────`\n"
-        "اختر نظاماً من القائمة المنسدلة أدناه لعرض إعداداته وضبطها."
+        "اختر نظاماً من القائمة لضبط **القناة المخصصة** له وتفعيله/تعطيله.\n\n"
+        "**1.** الحماية والأمان\n"
+        "**2.** التذاكر — تحديد فئة التذاكر\n"
+        "**3.** المستويات — تحديد قناة الليفل أب\n"
+        "**4.** الترحيب — تحديد قنوات الترحيب والوداع + الأوتو رول\n"
+        "**5.** السجلات — تحديد قناة الـ Logs\n"
+        "**6.** التقارير — تحديد قناة التقارير\n"
+        "**7.** الذكاء الاصطناعي — تفعيل/تعطيل\n"
+        "**8.** بروتوكول الصمت — تفعيل/تعطيل\n"
+        "**9.** تفويض الرتب — ماكس / تكتيكي / حصانة"
     )
-    embed = create_neon_embed("لوحة التحكم المركزية | Neon Control Panel", desc, color=0x5865F2)
+    embed = create_neon_embed("لوحة التحكم | Neon Setup", desc, color=0x5865F2)
     if guild.icon:
         embed.set_thumbnail(url=guild.icon.url)
     embed.set_author(name=guild.name, icon_url=guild.icon.url if guild.icon else None)
@@ -377,7 +417,7 @@ class SetupCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
 
-    @app_commands.command(name="setup", description="لوحة التحكم المركزية التفاعلية لإعدادات Neon")
+    @app_commands.command(name="setup", description="لوحة التحكم لإعدادات Neon وتخصيص القنوات")
     async def setup_cmd(self, interaction: discord.Interaction):
         if not await is_admin(interaction):
             await interaction.response.send_message(Strings.ERROR_PERMISSIONS, ephemeral=True)
@@ -440,13 +480,11 @@ class SetupCog(commands.Cog):
             await session.commit()
 
         changes_text = "\n".join(changes)
-        desc = (
-            f"`──────── تم التحديث بنجاح ────────`\n\n"
-            f"{changes_text}\n\n"
-            f"الأعضاء الذين يحملون هذه الرولات سيتم الاعتراف بهم تلقائياً\n"
-            f"في جميع أوامر Neon الإدارية والإشرافية."
+        embed = create_neon_embed(
+            "تعيين رتب الإدارة",
+            f"{changes_text}\n\nالأعضاء بهذه الرتب سيتم الاعتراف بهم في أوامر Neon الإدارية.",
+            color=0x50FA7B
         )
-        embed = create_neon_embed("تعيين رتب الإدارة | Role Assignment", desc, color=0x50FA7B)
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
         await log_decision(
@@ -457,7 +495,7 @@ class SetupCog(commands.Cog):
             outcome=f"تم تعيين الرولات: {changes_text}"
         )
 
-    @app_commands.command(name="view_config", description="عرض جميع إعدادات البوت الحالية للسيرفر في لوحة واحدة")
+    @app_commands.command(name="view_config", description="عرض جميع إعدادات البوت الحالية للسيرفر")
     async def view_config(self, interaction: discord.Interaction):
         if not await is_admin(interaction):
             await interaction.response.send_message(Strings.ERROR_PERMISSIONS, ephemeral=True)
@@ -474,30 +512,26 @@ class SetupCog(commands.Cog):
         def s(val):
             return "`ON`" if val else "`OFF`"
 
-        def ch(val):
-            return f"<#{val}>" if val else "`غير محدد`"
-
-        def rl(val):
-            return f"<@&{val}>" if val else "`غير محدد`"
-
         desc = (
-            f"`════════════ الأنظمة ════════════`\n"
+            f"`════════ الأنظمة ════════`\n"
             f"الحماية: {s(config.protection_enabled)} | الإدارة: {s(config.moderation_enabled)}\n"
             f"التذاكر: {s(config.tickets_enabled)} | المستويات: {s(config.leveling_enabled)}\n"
             f"الترحيب: {s(config.welcome_enabled)} | السجلات: {s(config.logging_enabled)}\n"
             f"AI: {s(config.ai_enabled)} | الإحصائيات: {s(config.stats_enabled)}\n"
             f"الصمت: {s(config.silent_protocol)}\n\n"
-            f"`════════════ القنوات ════════════`\n"
-            f"السجلات: {ch(config.log_channel_id)}\n"
-            f"الترحيب: {ch(config.welcome_channel_id)} | الوداع: {ch(config.leave_channel_id)}\n"
-            f"التقارير: {ch(config.report_channel_id)} | الروم الصوتي المؤقت: {ch(getattr(config, 'temp_voice_channel_id', None))}\n"
-            f"فئة التذاكر: {ch(config.ticket_category_id)}\n\n"
-            f"`════════════ الرولات ════════════`\n"
-            f"رتبة الأدمن: {rl(config.admin_role_id)}\n"
-            f"رتبة المشرف: {rl(config.mod_role_id)}\n"
-            f"رول انضمام تلقائي: {rl(config.auto_role_id)}"
+            f"`════════ القنوات ════════`\n"
+            f"السجلات: {_ch(config.log_channel_id)}\n"
+            f"الترحيب: {_ch(config.welcome_channel_id)} | الوداع: {_ch(config.leave_channel_id)}\n"
+            f"الليفل أب: {_ch(getattr(config, 'leveling_channel_id', None))}\n"
+            f"التقارير: {_ch(config.report_channel_id)}\n"
+            f"الروم الصوتي المؤقت: {_ch(getattr(config, 'temp_voice_channel_id', None))}\n"
+            f"فئة التذاكر: {_ch(config.ticket_category_id)}\n\n"
+            f"`════════ الرولات ════════`\n"
+            f"رتبة الأدمن: {_rl(config.admin_role_id)}\n"
+            f"رتبة المشرف: {_rl(config.mod_role_id)}\n"
+            f"رول انضمام تلقائي: {_rl(config.auto_role_id)}"
         )
-        embed = create_neon_embed("ملخص إعدادات السيرفر | Server Config Overview", desc, color=0x00F5FF)
+        embed = create_neon_embed("ملخص الإعدادات | Server Config", desc, color=0x00F5FF)
         if interaction.guild.icon:
             embed.set_thumbnail(url=interaction.guild.icon.url)
         await interaction.response.send_message(embed=embed, ephemeral=True)
