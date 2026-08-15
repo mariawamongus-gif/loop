@@ -1,0 +1,28 @@
+# Environment & Secret files (NEVER PUSH TO GITHUB)
+.env
+.env.*
+
+# SQLite Database
+*.db
+neon.db
+
+# Python Cache & Virtual Environments
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+env/
+venv/
+
+# Backups & Dynamic Export Files
+backups/
+transcripts/
+*.html
+*.png
+*.zip
+scratch/
+
+# OS specific files
+.DS_Store
+Thumbs.db
