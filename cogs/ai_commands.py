@@ -42,10 +42,13 @@ class AICommandsCog(commands.Cog):
         if message.author.bot or not message.guild:
             return
 
+        # تجاهل قنوات التذاكر تماماً لتجنب التضارب مع TicketsCog
+        if message.channel.name.startswith("ticket-"):
+            return
+
         # الرد التلقائي عند منشن البوت (خارج التذاكر)
         if (
             self.bot.user in message.mentions
-            and not message.channel.name.startswith("ticket-")
         ):
             clean_content = (
                 message.content
