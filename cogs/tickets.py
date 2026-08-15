@@ -2,17 +2,17 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 from sqlalchemy.future import select
+from sqlalchemy import update
 import json
 import asyncio
 from datetime import datetime
-from core.database import AsyncSessionLocal
+from core.database import AsyncSessionLocal, engine
 from core.models import SupportTicket, TicketWitness, GuildConfig
 from ai.fallback_manager import ai_manager
 from core.strings import Strings
 from utils.embeds import create_neon_embed, create_success_embed, create_error_embed, create_warning_embed
 from utils.decision_log import log_decision
 from utils.smart_split import smart_split
-
 
 # ─── 1. لوحة تحكم التذكرة التفاعلية المستمرة ──────────────────────────────────
 class TicketControlView(discord.ui.View):
@@ -123,7 +123,10 @@ class TicketControlView(discord.ui.View):
 
 
 # ─── 2. زر فتح تذكرة جديد ──────────────────────────────────────────────────────
-opening_tickets_lock = set()
+# استخدام asyncio.Lock بدلاً من set() لمنع race conditions حقيقية
+_opening_tickets_lock = asyncio.Lock()
+_recently_opened = set()  # debounce إضافي لمنع الـ double click السريع
+
 
 class OpenTicketView(discord.ui.View):
     def __init__(self):
@@ -139,18 +142,25 @@ class OpenTicketView(discord.ui.View):
         guild = interaction.guild
         user = interaction.user
 
-        # قفل مانع للنقر المتعدد السريع
+        # قفل مانع للنقر المتعدد السريع (Debounce)
         lock_key = (guild.id, user.id)
-        if lock_key in opening_tickets_lock:
+        if lock_key in _recently_opened:
             await interaction.response.send_message(
-                "جاري إنشاء تذكرتك بالفعل، الرجاء الانتظار ثانية واحدة...", ephemeral=True
+                "جاري إنشاء تذكرتك بالفعل، الرجاء الانتظار...", ephemeral=True
             )
             return
 
-        opening_tickets_lock.add(lock_key)
+        async with _opening_tickets_lock:
+            if lock_key in _recently_opened:
+                await interaction.response.send_message(
+                    "جاري إنشاء تذكرتك بالفعل، الرجاء الانتظار...", ephemeral=True
+                )
+                return
+
+            _recently_opened.add(lock_key)
 
         try:
-            # فحص إذا للمستخدم تذكرة مفتوحة بالفعل
+            # فحص إذا للمستخدم تذكرة مفتوحة بالفعل مع التحقق من وجود القناة فعلياً على Discord
             async with AsyncSessionLocal() as session:
                 existing = await session.execute(
                     select(SupportTicket).where(
@@ -160,7 +170,9 @@ class OpenTicketView(discord.ui.View):
                     )
                 )
                 existing_ticket = existing.scalars().first()
+
                 if existing_ticket:
+                    # التحقق من وجود القناة على Discord (قد تكون محذوفة يدوياً)
                     chan = guild.get_channel(existing_ticket.channel_id)
                     if chan is not None:
                         await interaction.response.send_message(
@@ -169,6 +181,7 @@ class OpenTicketView(discord.ui.View):
                         )
                         return
                     else:
+                        # القناة محذوفة يدوياً — تنظيف السجل وإتاحة فتح تذكرة جديدة
                         existing_ticket.status = "CLOSED"
                         existing_ticket.closed_at = datetime.utcnow()
                         await session.commit()
@@ -251,23 +264,78 @@ class OpenTicketView(discord.ui.View):
             embed.set_thumbnail(url=user.display_avatar.url if user.display_avatar else "")
             embed.set_author(name=guild.name, icon_url=guild.icon.url if guild.icon else None)
 
+            # إرسال أزرار التحكم مرة واحدة فقط عند الإنشاء
             control_view = TicketControlView(ticket_id)
             await ticket_channel.send(content=user.mention, embed=embed, view=control_view)
             await interaction.response.send_message(
                 f"✅ تم فتح تذكرتك: {ticket_channel.mention}", ephemeral=True
             )
         finally:
-            opening_tickets_lock.discard(lock_key)
+            _recently_opened.discard(lock_key)
 
 
 # ─── 3. الـ Cog الرئيسي ─────────────────────────────────────────────────────────
 class TicketsCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
+        self.cleanup_task.start()
+
+    def cog_unload(self):
+        self.cleanup_task.cancel()
+
+    # ─── تنظيف التذاكر المحذوفة آلياً ──────────────────────────────────────────
+    @tasks.loop(hours=6)
+    async def cleanup_task(self):
+        """تنظيف التذاكر التي قنواتها محذوفة من Discord."""
+        await self.bot.wait_until_ready()
+        await self._cleanup_deleted_tickets()
+
+    @cleanup_task.before_loop
+    async def before_cleanup(self):
+        await self.bot.wait_until_ready()
+
+    async def _cleanup_deleted_tickets(self):
+        """فحص جميع التذاكر المفتوحة/المصعّدة والتأكد من وجود قنواتها."""
+        try:
+            async with AsyncSessionLocal() as session:
+                result = await session.execute(
+                    select(SupportTicket).where(
+                        SupportTicket.status.in_(["OPEN", "ESCALATED"])
+                    )
+                )
+                tickets = result.scalars().all()
+
+                closed_count = 0
+                for ticket in tickets:
+                    guild = self.bot.get_guild(ticket.guild_id)
+                    if not guild:
+                        # السيرفر غير متوفر — إغلاق التذكرة
+                        ticket.status = "CLOSED"
+                        ticket.closed_at = datetime.utcnow()
+                        closed_count += 1
+                        continue
+
+                    channel = guild.get_channel(ticket.channel_id)
+                    if channel is None:
+                        # القناة محذوفة يدوياً — إغلاق التذكرة في DB
+                        ticket.status = "CLOSED"
+                        ticket.closed_at = datetime.utcnow()
+                        closed_count += 1
+
+                if closed_count > 0:
+                    await session.commit()
+                    print(f"[Tickets Cleanup] تم إغلاق {closed_count} تذكرة محذوفة.")
+
+        except Exception as e:
+            print(f"[Tickets Cleanup Error] {e}")
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
         if message.author.bot or not message.guild:
+            return
+
+        # تجاهل الرسائل خارج قنوات التذاكر
+        if not message.channel.name.startswith("ticket-"):
             return
 
         # فحص هل القناة تابعة لتذكرة مفتوحة
@@ -298,11 +366,14 @@ class TicketsCog(commands.Cog):
             await message.channel.send(embed=embed)
             return
 
-        # إذا كانت التذكرة مُحوّلة لمشرف بشري (ESCALATED)، يتوقف الـ AI عن الرد الآلي لتجنب التشويش
-        if ticket.status == "ESCALATED":
-            return
+        # إعادة جلب حالة التذكرة من DB للتأكد من عدم وجود تغيير (مثل التحويل لبشري)
+        async with AsyncSessionLocal() as session:
+            fresh_ticket = await session.get(SupportTicket, ticket.ticket_id)
+            if not fresh_ticket or fresh_ticket.status == "ESCALATED":
+                # إيقاف ردود الـ AI الآلية فور تحويل التذكرة لمشرف بشري
+                return
 
-        # محاورة AI
+        # محاورة AI — لا ترسل أزرار التحكم هنا، فهي مُرسلة مرة واحدة عند الإنشاء
         async with message.channel.typing():
             history_messages = []
             async for msg in message.channel.history(limit=12, oldest_first=True):
