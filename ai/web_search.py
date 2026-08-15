@@ -2,7 +2,6 @@ import aiohttp
 import asyncio
 import re
 import urllib.parse
-from bs4 import BeautifulSoup
 import logging
 from ai.fallback_manager import ai_manager
 
@@ -10,7 +9,7 @@ logger = logging.getLogger(__name__)
 
 async def search_duckduckgo_lite(query: str, max_results: int = 5) -> list[dict]:
     """
-    البحث السريع المباشر في محرك البحث واستخراج العناوين والروابط والمقتطفات النصية.
+    البحث السريع المباشر في محرك البحث واستخراج العناوين والروابط والمقتطفات النصية بدون اعتماد على حزم خارجية.
     """
     url = "https://html.duckduckgo.com/html/"
     headers = {
@@ -26,7 +25,7 @@ async def search_duckduckgo_lite(query: str, max_results: int = 5) -> list[dict]
             async with session.post(url, data=data, headers=headers, timeout=10) as resp:
                 if resp.status == 200:
                     html = await resp.text()
-                    # استخراج النتائج بالـ regex السريع أو تحليل HTML
+                    # استخراج النتائج بالـ regex السريع والآمن
                     links = re.findall(r'<a class="result__url" href="([^"]+)".*?>(.*?)</a>', html, re.DOTALL)
                     snippets = re.findall(r'<a class="result__snippet[^>]*>(.*?)</a>', html, re.DOTALL)
                     titles = re.findall(r'<a class="result__title[^>]*href="[^"]*"[^>]*>(.*?)</a>', html, re.DOTALL)
@@ -36,7 +35,7 @@ async def search_duckduckgo_lite(query: str, max_results: int = 5) -> list[dict]
                         clean_snippet = re.sub(r'<[^>]+>', '', snippets[i]).strip()
                         raw_link = links[i][0] if i < len(links) else ""
                         
-                        # فك تشفير رابط DuckDuckGo الفعلي إن وجد
+                        # فك تشفير رابط DuckDuckGo الفعلي
                         actual_url = raw_link
                         if "uddg=" in raw_link:
                             try:
@@ -78,7 +77,11 @@ async def search_and_synthesize(query: str) -> dict:
     """
     يبحث في الإنترنت ويلخص النتائج عبر الذكاء الاصطناعي مع تقديم المصادر.
     """
-    search_results = await search_duckduckgo_lite(query, max_results=4)
+    try:
+        search_results = await search_duckduckgo_lite(query, max_results=4)
+    except Exception as e:
+        logger.warning(f"خطأ أثناء جلب نتائج الويب: {e}")
+        search_results = []
 
     if not search_results:
         return {
@@ -102,10 +105,14 @@ async def search_and_synthesize(query: str) -> dict:
 
     user_msg = f"الاستعلام المطلوب: {query}\n\nنتائج البحث الحية المستخرجة:\n{context_str}"
 
-    summary = await ai_manager.generate(
-        messages=[{"role": "user", "content": user_msg}],
-        system_prompt=sys_prompt
-    )
+    try:
+        summary = await ai_manager.generate(
+            messages=[{"role": "user", "content": user_msg}],
+            system_prompt=sys_prompt
+        )
+    except Exception as e:
+        logger.warning(f"تعذر تلخيص نتائج البحث عبر AI: {e}")
+        summary = "تم استخراج المصادر أدناه، ولكن تعذر استدعاء نموذج التلخيص اللحظي."
 
     return {
         "summary": summary,

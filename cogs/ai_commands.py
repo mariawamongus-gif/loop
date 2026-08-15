@@ -217,24 +217,26 @@ class AICommandsCog(commands.Cog):
     async def search(self, interaction: discord.Interaction, query: str):
         await interaction.response.defer()
 
-        from ai.web_search import search_and_synthesize
-        res = await search_and_synthesize(query)
+        try:
+            from ai.web_search import search_and_synthesize
+            res = await search_and_synthesize(query)
 
-        summary = res["summary"]
-        sources = res["sources"]
+            summary = res.get("summary", "لم يتم العثور على ملخص.")
+            sources = res.get("sources", [])
 
-        sources_str = "\n".join(sources[:4]) if sources else "`المصادر مفتوحة`"
-        desc = (
-            f"**الاستعلام:** `{query}`\n\n"
-            f"`──────── التقرير المستخرج ────────`\n"
-            f"{summary}\n\n"
-            f"`──────── المصادر والروابط ────────`\n"
-            f"{sources_str}"
-        )
-
-        embed = create_neon_embed(f"نتائج البحث المباشر | Web Search", desc, color=0x00F5FF)
-        await interaction.followup.send(embed=embed)
-        self._track_usage(interaction.guild_id, len(summary))
+            sources_str = "\n".join(sources[:4]) if sources else "`المصادر مفتوحة`"
+            desc = (
+                f"**الاستعلام:** `{query}`\n\n"
+                f"`──────── التقرير المستخرج ────────`\n"
+                f"{summary}\n\n"
+                f"`──────── المصادر والروابط ────────`\n"
+                f"{sources_str}"
+            )
+            embed = create_neon_embed(f"نتائج البحث المباشر | Web Search", desc, color=0x00F5FF)
+            await interaction.followup.send(embed=embed)
+            self._track_usage(interaction.guild_id, len(summary))
+        except Exception as e:
+            await interaction.followup.send(f"تعذر إتمام عملية البحث في الإنترنت حالياً: `{e}`", ephemeral=True)
 
 
 async def setup(bot: commands.Bot):
