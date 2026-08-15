@@ -57,7 +57,7 @@ class AICommandsCog(commands.Cog):
                 .strip()
             )
             if not clean_content:
-                clean_content = "وحدة العمليات الاستراتيجية Neon جاهزة وتحت أمرك. بانتظار التوجيهات."
+                clean_content = "اهلا"
 
             self._add_to_context(message.channel.id, message.author.id, "user", clean_content)
 
