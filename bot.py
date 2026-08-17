@@ -28,8 +28,17 @@ class NeonBot(commands.Bot):
     async def setup_hook(self):
         logging.info("بدء تهيئة قاعدة البيانات والخدمات...")
         await init_db()
+        
+        # تحميل وتأمين كافة إعدادات السيرفرات في الذاكرة الدائمة والكاش المزدوج
+        try:
+            from core.config_manager import preload_all_configs
+            await preload_all_configs()
+        except Exception as e:
+            logging.warning(f"تنبيه أثناء تحميل كاش الإعدادات: {e}")
+
         await redis_manager.init()
         generate_default_png_icons()
+
 
         # تسجيل الـ Views الدائمة
         self.add_view(OpenTicketView())

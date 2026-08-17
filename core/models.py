@@ -79,6 +79,14 @@ class SupportTicket(Base):
     category = Column(String(50), default="GENERAL")
     priority = Column(String(20), default="NORMAL")
     summary = Column(Text, nullable=True)
+
+    # ─── حقول فحص الأدلة والوسائط المتعددة (Multimodal Evidence) ──────────────
+    evidence_type = Column(String(20), default="NONE")  # NONE, IMAGE, AUDIO, WITNESS
+    evidence_url = Column(String(500), nullable=True)
+    evidence_status = Column(String(20), default="NONE")  # NONE, PENDING, VERIFIED, REJECTED
+    evidence_analysis = Column(Text, nullable=True)
+    evidence_score = Column(Integer, default=0)
+
     created_at = Column(DateTime, default=datetime.utcnow)
     closed_at = Column(DateTime, nullable=True)
 

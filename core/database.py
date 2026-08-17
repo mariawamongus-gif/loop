@@ -11,7 +11,7 @@ async def init_db():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
         
-        # SQLite Auto-Migration: إضافة أي أعمدة جديدة تلقائياً
+            # SQLite Auto-Migration: إضافة أي أعمدة جديدة تلقائياً
         try:
             from sqlalchemy import text
             res = await conn.execute(text("PRAGMA table_info(guild_configs);"))
@@ -23,8 +23,22 @@ async def init_db():
             for col_name, col_type in new_cols.items():
                 if col_name not in columns:
                     await conn.execute(text(f"ALTER TABLE guild_configs ADD COLUMN {col_name} {col_type};"))
+
+            res_tickets = await conn.execute(text("PRAGMA table_info(support_tickets);"))
+            ticket_cols = [row[1] for row in res_tickets.fetchall()]
+            new_ticket_cols = {
+                "evidence_type": "VARCHAR(20) DEFAULT 'NONE'",
+                "evidence_url": "VARCHAR(500)",
+                "evidence_status": "VARCHAR(20) DEFAULT 'NONE'",
+                "evidence_analysis": "TEXT",
+                "evidence_score": "INTEGER DEFAULT 0",
+            }
+            for col_name, col_type in new_ticket_cols.items():
+                if col_name not in ticket_cols:
+                    await conn.execute(text(f"ALTER TABLE support_tickets ADD COLUMN {col_name} {col_type};"))
         except Exception:
             pass
+
 
 async def get_db():
     async with AsyncSessionLocal() as session:

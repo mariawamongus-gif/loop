@@ -2,12 +2,14 @@ import re
 import discord
 from discord import app_commands
 from discord.ext import commands
+from datetime import datetime
+from typing import Optional
 from ai.fallback_manager import ai_manager
 from utils.smart_split import smart_split
 from utils.embeds import create_neon_embed, create_success_embed, create_error_embed
 from core.strings import Strings
 from core.database import AsyncSessionLocal
-from core.models import GuildConfig
+from core.models import GuildConfig, ModerationCase
 
 
 def is_requesting_staff(text: str) -> bool:
@@ -18,6 +20,56 @@ def is_requesting_staff(text: str) -> bool:
         r"نادي لي", r"نادي المشرف", r"ابغى اكلم", r"بدي اكلم", r"ممكن اكلم"
     ]
     return any(re.search(p, text, re.IGNORECASE) for p in patterns)
+
+
+def parse_action_intent(text: str) -> Optional[tuple[str, int]]:
+    """استخراج نية الإجراء الإداري ومعرف المستخدم من الرسالة."""
+    user_ids = re.findall(r"\d{17,20}", text)
+    if not user_ids:
+        return None
+
+    target_id = int(user_ids[0])
+    text_lower = text.lower()
+
+    if any(k in text_lower for k in ["فك حظر", "شيل الحظر", "الغاء حظر", "unban"]):
+        return ("UNBAN", target_id)
+    elif any(k in text_lower for k in ["حظر", "احظر", "تبنيد", "بند", "ban", "block"]):
+        return ("BAN", target_id)
+    elif any(k in text_lower for k in ["طرد", "اطرد", "kick"]):
+        return ("KICK", target_id)
+    elif any(k in text_lower for k in ["كتم", "اكتم", "ميوت", "timeout", "mute"]):
+        return ("TIMEOUT", target_id)
+
+    return None
+
+
+def can_execute_action(author: discord.Member, action: str) -> bool:
+    """التحقق من امتلاك العضو لصلاحية تنفيذ الإجراء الإداري المطلوب."""
+    if author.guild_permissions.administrator:
+        return True
+    if action in ("BAN", "UNBAN") and author.guild_permissions.ban_members:
+        return True
+    if action == "KICK" and author.guild_permissions.kick_members:
+        return True
+    if action == "TIMEOUT" and author.guild_permissions.moderate_members:
+        return True
+    return False
+
+
+def check_hierarchy_for_id(guild: discord.Guild, mod: discord.Member, target_id: int) -> tuple[bool, str]:
+    """فحص تدرج الرتب وحماية الإدارة عند تنفيذ الأوامر بالآيدي المباشر."""
+    if target_id == guild.owner_id:
+        return False, "لا يمكن تطبيق إجراء إداري على مالك السيرفر."
+    if target_id == mod.id:
+        return False, "لا يمكنك تطبيق إجراء إداري على نفسك."
+    target_member = guild.get_member(target_id)
+    if target_member:
+        if mod.id != guild.owner_id and target_member.top_role >= mod.top_role:
+            return False, "لا يمكنك تطبيق إجراء على عضو يملك رتبة مساوية لرتبتك أو أعلى منها."
+        if guild.me and target_member.top_role >= guild.me.top_role:
+            return False, "رتبة العضو أعلى من رتبة البوت أو مساوية لها."
+    return True, ""
+
 
 
 async def get_staff_role_mention(guild: discord.Guild) -> str:
@@ -37,12 +89,126 @@ async def get_staff_role_mention(guild: discord.Guild) -> str:
     except Exception:
         pass
 
-    # بحث تلقائي عن رتبة المشرفين بالسيرفر
     for role in guild.roles:
         if role.permissions.manage_guild or role.permissions.manage_messages or role.permissions.administrator:
             if not role.is_default() and not role.managed:
                 return role.mention
     return "@here"
+
+
+class AIActionConfirmView(discord.ui.View):
+    """لوحة تفاعلية فورية لتأكيد وتنفيذ الإجراء الإداري بضغطة زر واحدة."""
+    def __init__(self, executor: discord.Member, target_id: int, action: str, reason: str):
+        super().__init__(timeout=90)
+        self.executor = executor
+        self.target_id = target_id
+        self.action = action
+        self.reason = reason
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id != self.executor.id:
+            await interaction.response.send_message("هذا الزر مخصص للمسؤول الذي طلب الإجراء فقط.", ephemeral=True)
+            return False
+        return True
+
+    @discord.ui.button(label="تأكيد التنفيذ فوراً", style=discord.ButtonStyle.danger, emoji="🔨")
+    async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
+        guild = interaction.guild
+        for item in self.children:
+            item.disabled = True
+
+        try:
+            case_id = 0
+            if self.action == "BAN":
+                await guild.ban(discord.Object(id=self.target_id), reason=self.reason)
+                async with AsyncSessionLocal() as session:
+                    case = ModerationCase(
+                        guild_id=guild.id,
+                        user_id=self.target_id,
+                        mod_id=self.executor.id,
+                        action="BAN",
+                        reason=self.reason,
+                        created_at=datetime.utcnow()
+                    )
+                    session.add(case)
+                    await session.commit()
+                    await session.refresh(case)
+                    case_id = case.case_id
+
+                embed = discord.Embed(
+                    title="❖ تم تنفيذ الحظر بنجاح | Action Executed",
+                    description=(
+                        f"✅ **تم حظر المستخدم بنجاح من السيرفر بواسطة Neon AI بتفويض منك.**\n\n"
+                        f"• **المستخدم المستهدف:** <@{self.target_id}> (`{self.target_id}`)\n"
+                        f"• **المنفذ المسؤول:** {self.executor.mention}\n"
+                        f"• **رقم الحالة:** `Case #{case_id}`\n"
+                        f"• **السبب:** `{self.reason}`"
+                    ),
+                    color=0x50FA7B
+                )
+                await interaction.response.edit_message(embed=embed, view=self)
+                return
+
+            elif self.action == "KICK":
+                member = guild.get_member(self.target_id)
+                if member:
+                    await member.kick(reason=self.reason)
+                    async with AsyncSessionLocal() as session:
+                        case = ModerationCase(
+                            guild_id=guild.id,
+                            user_id=self.target_id,
+                            mod_id=self.executor.id,
+                            action="KICK",
+                            reason=self.reason,
+                            created_at=datetime.utcnow()
+                        )
+                        session.add(case)
+                        await session.commit()
+                        await session.refresh(case)
+                        case_id = case.case_id
+
+                    embed = discord.Embed(
+                        title="❖ تم تنفيذ الطرد بنجاح | Action Executed",
+                        description=f"✅ تم طرد العضو <@{self.target_id}> بنجاح من السيرفر بتفويض منك | `Case #{case_id}`.",
+                        color=0x50FA7B
+                    )
+                    await interaction.response.edit_message(embed=embed, view=self)
+                else:
+                    await interaction.response.edit_message(content="❌ تعذر العثور على العضو في السيرفر لطرده.", view=self)
+                return
+
+            elif self.action == "UNBAN":
+                await guild.unban(discord.Object(id=self.target_id), reason=self.reason)
+                async with AsyncSessionLocal() as session:
+                    case = ModerationCase(
+                        guild_id=guild.id,
+                        user_id=self.target_id,
+                        mod_id=self.executor.id,
+                        action="UNBAN",
+                        reason=self.reason,
+                        created_at=datetime.utcnow()
+                    )
+                    session.add(case)
+                    await session.commit()
+                    await session.refresh(case)
+                    case_id = case.case_id
+
+                embed = discord.Embed(
+                    title="❖ تم إلغاء الحظر بنجاح | Action Executed",
+                    description=f"✅ تم إلغاء حظر المستخدم <@{self.target_id}> بنجاح | `Case #{case_id}`.",
+                    color=0x50FA7B
+                )
+                await interaction.response.edit_message(embed=embed, view=self)
+                return
+
+        except Exception as e:
+            await interaction.response.edit_message(content=f"❌ تعذر تنفيذ الإجراء بسبب قيود الصلاحيات أو الرتب: `{e}`", view=self)
+
+    @discord.ui.button(label="إلغاء", style=discord.ButtonStyle.secondary, emoji="✖️")
+    async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button):
+        for item in self.children:
+            item.disabled = True
+        await interaction.response.edit_message(content="تم إلغاء تنفيذ الإجراء بناءً على طلبك.", embed=None, view=self)
 
 
 class AICommandsCog(commands.Cog):
@@ -65,7 +231,6 @@ class AICommandsCog(commands.Cog):
         if key not in self.context_memory:
             self.context_memory[key] = []
         self.context_memory[key].append({"role": role, "content": content})
-        # الإبقاء على آخر 8 رسائل فقط
         if len(self.context_memory[key]) > 8:
             self.context_memory[key] = self.context_memory[key][-8:]
 
@@ -83,7 +248,7 @@ class AICommandsCog(commands.Cog):
             f"- العضو الذي يخاطبك: {author.display_name} (ID: {author.id})\n"
             f"- القناة الحالية: #{channel.name}\n"
             f"- إجمالي أعضاء السيرفر: {guild.member_count} عضو\n"
-            f"- صلاحياتك: أنت تملك صلاحيات إدارة ودفاع وتحكم كاملة ومطلقة بالسيرفر."
+            f"- صلاحياتك: أنت تملك صلاحيات إدارة ودفاع كاملة لمساعدة المشرفين والأعضاء."
         )
 
     @commands.Cog.listener()
@@ -106,14 +271,52 @@ class AICommandsCog(commands.Cog):
             if not clean_content:
                 clean_content = "اهلا"
 
-            # 1. فحص طلب استدعاء المشرفين
+            # 1. فحص طلب تنفيذ إجراء إداري حقيقي (مثل حظر عضو برقم الآيدي)
+            action_intent = parse_action_intent(clean_content)
+            if action_intent:
+                action, target_id = action_intent
+                if not can_execute_action(message.author, action):
+                    await message.channel.send(
+                        f"❌ عذراً {message.author.mention}، لا تملك الصلاحيات الإدارية المطلوبة (`{action}`) لتنفيذ هذا الإجراء."
+                    )
+                    return
+
+                allowed, err_msg = check_hierarchy_for_id(message.guild, message.author, target_id)
+                if not allowed:
+                    await message.channel.send(f"❌ تعذر تنفيذ الإجراء: {err_msg}")
+                    return
+
+                action_names = {"BAN": "حظر نهائي (Ban)", "KICK": "طرد (Kick)", "UNBAN": "فك حظر (Unban)"}
+                action_name = action_names.get(action, action)
+                reason = f"طلب إداري عبر المساعد الذكي بتفويض من {message.author}"
+
+                embed = discord.Embed(
+                    title="🛡️ تأكيد تنفيذ الإجراء الإداري | Assistant Action",
+                    description=(
+                        f"أهلاً بك {message.author.mention}، بالتأكيد يمكنني مساعدتك في تنفيذ هذا الإجراء فوراً.\n\n"
+                        f"• **الإجراء المطلوب:** `{action_name}`\n"
+                        f"• **المستخدم المستهدف:** <@{target_id}> (`{target_id}`)\n"
+                        f"• **المسؤول المفوض:** {message.author.mention}\n\n"
+                        f"👇 **اضغط على الزر أدناه لتأكيد وتنفيذ العملية فوراً في السيرفر:**"
+                    ),
+                    color=0x2B2D31
+                )
+                view = AIActionConfirmView(message.author, target_id, action, reason)
+                await message.channel.send(embed=embed, view=view)
+                return
+
+
+            # 2. فحص طلب استدعاء المشرفين
             if is_requesting_staff(clean_content):
                 staff_mention = await get_staff_role_mention(message.guild)
                 msg_txt = (
                     f"🔔 {message.author.mention} **تم استدعاء طاقم الإشراف لمساعدتك:** {staff_mention}\n"
                     f"> تفضل بطرح تفاصيل استفسارك أو مشكلتك هنا وسيتدخل أحد المشرفين في أقرب وقت."
                 )
-                await message.channel.send(msg_txt)
+                await message.channel.send(
+                    msg_txt,
+                    allowed_mentions=discord.AllowedMentions(roles=True, users=True, everyone=True)
+                )
                 return
 
             self._add_to_context(message.channel.id, message.author.id, "user", clean_content)
@@ -133,19 +336,58 @@ class AICommandsCog(commands.Cog):
                 await message.channel.send(chunk)
 
     # ─── /ask ────────────────────────────────────────────────────────────────────
-    @app_commands.command(name="ask", description="طرح سؤال مباشر على وحدة Neon AI مع ذاكرة سياقية")
-    @app_commands.describe(question="السؤال أو النص المراد إرساله لـ Neon AI")
+    @app_commands.command(name="ask", description="طرح سؤال أو طلب إجراء مباشر على وحدة Neon AI")
+    @app_commands.describe(question="السؤال أو طلب الإجراء الموجه لـ Neon AI")
     async def ask(self, interaction: discord.Interaction, question: str):
+        # 1. فحص طلب تنفيذ إجراء إداري
+        action_intent = parse_action_intent(question)
+        if action_intent:
+            action, target_id = action_intent
+            if not can_execute_action(interaction.user, action):
+                await interaction.response.send_message(
+                    f"❌ عذراً {interaction.user.mention}، لا تملك الصلاحيات الإدارية المطلوبة (`{action}`) لتنفيذ هذا الإجراء.",
+                    ephemeral=True
+                )
+                return
+
+            allowed, err_msg = check_hierarchy_for_id(interaction.guild, interaction.user, target_id)
+            if not allowed:
+                await interaction.response.send_message(f"❌ تعذر تنفيذ الإجراء: {err_msg}", ephemeral=True)
+                return
+
+            action_names = {"BAN": "حظر نهائي (Ban)", "KICK": "طرد (Kick)", "UNBAN": "فك حظر (Unban)"}
+
+            action_name = action_names.get(action, action)
+            reason = f"طلب إداري عبر المساعد الذكي بتفويض من {interaction.user}"
+
+            embed = discord.Embed(
+                title="🛡️ تأكيد تنفيذ الإجراء الإداري | Assistant Action",
+                description=(
+                    f"أهلاً بك {interaction.user.mention}، بالتأكيد يمكنني مساعدتك في تنفيذ هذا الإجراء فوراً.\n\n"
+                    f"• **الإجراء المطلوب:** `{action_name}`\n"
+                    f"• **المستخدم المستهدف:** <@{target_id}> (`{target_id}`)\n"
+                    f"• **المسؤول المفوض:** {interaction.user.mention}\n\n"
+                    f"👇 **اضغط على الزر أدناه لتأكيد وتنفيذ العملية فوراً في السيرفر:**"
+                ),
+                color=0x2B2D31
+            )
+            view = AIActionConfirmView(interaction.user, target_id, action, reason)
+            await interaction.response.send_message(embed=embed, view=view)
+            return
+
         await interaction.response.defer()
 
-        # فحص طلب استدعاء المشرفين
+        # 2. فحص طلب استدعاء المشرفين
         if is_requesting_staff(question):
             staff_mention = await get_staff_role_mention(interaction.guild)
             msg_txt = (
                 f"🔔 {interaction.user.mention} **تم استدعاء طاقم الإشراف لمساعدتك:** {staff_mention}\n"
                 f"> تفضل بطرح تفاصيل استفسارك أو مشكلتك هنا وسيتدخل أحد المشرفين في أقرب وقت."
             )
-            await interaction.followup.send(msg_txt)
+            await interaction.followup.send(
+                msg_txt,
+                allowed_mentions=discord.AllowedMentions(roles=True, users=True, everyone=True)
+            )
             return
 
         self._add_to_context(interaction.channel_id, interaction.user.id, "user", question)
@@ -163,118 +405,32 @@ class AICommandsCog(commands.Cog):
         await interaction.followup.send(chunks[0])
         for chunk in chunks[1:]:
             await interaction.channel.send(chunk)
-            await interaction.channel.send(chunk)
 
     # ─── /explain_code ────────────────────────────────────────────────────────────
     @app_commands.command(
         name="explain_code",
-        description="تحليل كود أو خطأ برمجي وإصلاحه آلياً عبر Neon AI"
+        description="تحليل كود برمجي، شرح منطقه، اكتشاف الثغرات، واقتراح التحسينات"
     )
-    @app_commands.describe(code="الكود أو نص الخطأ المراد تحليله")
+    @app_commands.describe(code="الكود البرمجي المراد تحليله")
     async def explain_code(self, interaction: discord.Interaction, code: str):
         await interaction.response.defer()
 
-        sys_prompt = (
-            "أنت مهندس برمجيات خبير ووحدة Neon AI البرمجية. "
-            "حلل الكود أو الخطأ بدقة، حدد السبب الجذري (Root Cause)، "
-            "وقدم الحل المصحح خطوة بخطوة بلغة واضحة ومباشرة."
+        user_prompt = (
+            f"قم بتحليل الكود البرمجي التالي بدقة:\n"
+            f"1. شرح وظيفة الكود وما يفعله.\n"
+            f"2. اكتشاف الأخطاء المحتملة أو الثغرات الأمنية إن وجدت.\n"
+            f"3. تقديم النسخة المصححة والمحسنة من الكود.\n\n"
+            f"```\n{code}\n```"
         )
 
         response = await ai_manager.generate(
-            messages=[{"role": "user", "content": f"حلل وأصلح هذا:\n```\n{code}\n```"}],
-            system_prompt=sys_prompt
+            messages=[{"role": "user", "content": user_prompt}],
+            system_prompt="أنت مبرمج وخبير أمني متقدم. قدم تحليلاً برمجياً دقيقاً ومباشراً بدون حشو."
         )
-        self._track_usage(interaction.guild_id, len(response))
 
         chunks = smart_split(response, max_length=2000)
-        await interaction.followup.send(chunks[0])
-        for chunk in chunks[1:]:
-            await interaction.channel.send(chunk)
-
-    # ─── /clear_memory ────────────────────────────────────────────────────────────
-    @app_commands.command(
-        name="clear_memory",
-        description="مسح الذاكرة السياقية لـ Neon AI في هذه القناة"
-    )
-    async def clear_memory(self, interaction: discord.Interaction):
-        key = self._get_key(interaction.channel_id, interaction.user.id)
-        if key in self.context_memory:
-            del self.context_memory[key]
-            embed = create_success_embed(
-                "مسح الذاكرة السياقية | Clear Memory",
-                "تم مسح سجل محادثتك مع Neon AI في هذه القناة.\n"
-                "المحادثة القادمة ستبدأ من الصفر تماماً."
-            )
-        else:
-            embed = create_neon_embed(
-                "مسح الذاكرة | Clear Memory",
-                "لا توجد ذاكرة سياقية محفوظة لك في هذه القناة حالياً."
-            )
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-
-    # ─── /ai_stats ────────────────────────────────────────────────────────────────
-    @app_commands.command(
-        name="ai_stats",
-        description="عرض إحصائيات استخدام Neon AI في هذا السيرفر"
-    )
-    async def ai_stats(self, interaction: discord.Interaction):
-        guild_id = interaction.guild_id
-        stats = self.usage_stats.get(guild_id, {"requests": 0, "chars_total": 0})
-
-        total_req = stats["requests"]
-        total_chars = stats["chars_total"]
-        active_sessions = sum(
-            1 for (ch, _) in self.context_memory.keys()
-            if ch == interaction.channel_id
-        )
-
-        desc = (
-            f"`──────── إحصائيات Neon AI ────────`\n"
-            f"**إجمالي الطلبات:** `{total_req}`\n"
-            f"**إجمالي الأحرف المولّدة:** `{total_chars:,}`\n"
-            f"**جلسات الذاكرة النشطة (القناة الحالية):** `{active_sessions}`\n"
-            f"**إجمالي جلسات الذاكرة (الكل):** `{len(self.context_memory)}`\n\n"
-            f"*الإحصائيات تُعاد عند إعادة تشغيل البوت.*"
-        )
-
-        embed = create_neon_embed("إحصائيات Neon AI | AI Usage Stats", desc, color=0x9D4EDD)
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-
-    # ─── /summarize ───────────────────────────────────────────────────────────────
-    @app_commands.command(
-        name="summarize",
-        description="تلخيص آخر N رسالة في القناة الحالية بواسطة Neon AI"
-    )
-    @app_commands.describe(count="عدد الرسائل المراد تلخيصها (5-50)")
-    async def summarize(self, interaction: discord.Interaction, count: int = 20):
-        if count < 5 or count > 50:
-            await interaction.response.send_message("العدد يجب أن يكون بين 5 و 50.", ephemeral=True)
-            return
-
-        await interaction.response.defer()
-
-        messages_text = []
-        async for msg in interaction.channel.history(limit=count, oldest_first=True):
-            if not msg.author.bot and msg.content:
-                messages_text.append(f"{msg.author.display_name}: {msg.content}")
-
-        if not messages_text:
-            await interaction.followup.send("لا توجد رسائل كافية للتلخيص.", ephemeral=True)
-            return
-
-        conversation = "\n".join(messages_text)
-        sys_prompt = (
-            "أنت وحدة تلخيص محادثات. لخّص المحادثة التالية بشكل موجز وواضح "
-            "مع ذكر النقاط الرئيسية والمخرجات المهمة."
-        )
-        response = await ai_manager.generate(
-            messages=[{"role": "user", "content": f"لخص هذه المحادثة:\n\n{conversation}"}],
-            system_prompt=sys_prompt
-        )
-
-        self._track_usage(interaction.guild_id, len(response))
-        chunks = smart_split(response, max_length=2000)
-        await interaction.followup.send(f"**📝 ملخص آخر {count} رسالة:**\n\n{chunks[0]}")
+        embed = create_neon_embed("تحليل وشرح الكود البرمجي | Code Review", chunks[0], color=0x9B59B6)
+        await interaction.followup.send(embed=embed)
         for chunk in chunks[1:]:
             await interaction.channel.send(chunk)
 

@@ -1,39 +1,26 @@
 import discord
 from typing import Optional, List
 from sqlalchemy.future import select
-from sqlalchemy import delete
 from core.database import AsyncSessionLocal
 from core.models import GuildConfig, Whitelist, RolePermissionTier
+from core.config_manager import (
+    get_cached_guild_config,
+    get_cached_tier_role_ids,
+    set_cached_tier_roles,
+    save_guild_config_field
+)
 
 async def get_guild_config(guild_id: int) -> Optional[GuildConfig]:
-    async with AsyncSessionLocal() as session:
-        result = await session.execute(select(GuildConfig).where(GuildConfig.guild_id == guild_id))
-        return result.scalars().first()
+    """استرجاع إعدادات السيرفر المحمية من الذاكرة الدائمة والكاش."""
+    return await get_cached_guild_config(guild_id)
 
 async def get_tier_role_ids(guild_id: int, tier: str) -> List[int]:
-    """استرجاع جميع معرّفات الرولات المسندة لمستوى صلاحية معين"""
-    async with AsyncSessionLocal() as session:
-        result = await session.execute(
-            select(RolePermissionTier.role_id).where(
-                RolePermissionTier.guild_id == guild_id,
-                RolePermissionTier.tier == tier.upper()
-            )
-        )
-        return list(result.scalars().all())
+    """استرجاع جميع معرّفات الرولات المسندة لمستوى صلاحية معين بدقة متناهية."""
+    return await get_cached_tier_role_ids(guild_id, tier)
 
 async def set_tier_roles(guild_id: int, tier: str, role_ids: List[int]):
-    """تحديث رولات مستوى معين (استبدال كامل)"""
-    tier_upper = tier.upper()
-    async with AsyncSessionLocal() as session:
-        await session.execute(
-            delete(RolePermissionTier).where(
-                RolePermissionTier.guild_id == guild_id,
-                RolePermissionTier.tier == tier_upper
-            )
-        )
-        for rid in role_ids:
-            session.add(RolePermissionTier(guild_id=guild_id, tier=tier_upper, role_id=rid))
-        await session.commit()
+    """تحديث رولات مستوى معين وحفظها في الكاش وقاعدة البيانات والـ JSON معاً."""
+    await set_cached_tier_roles(guild_id, tier, role_ids)
 
 async def is_admin(interaction: discord.Interaction) -> bool:
     """فحص صلاحية الرتبة الماكس (Executive / Head Admin / Owner)"""
@@ -57,7 +44,6 @@ async def is_admin(interaction: discord.Interaction) -> bool:
 
     return False
 
-# مرادف للرتبة الماكس
 is_executive = is_admin
 
 async def is_mod(interaction: discord.Interaction) -> bool:
@@ -83,7 +69,6 @@ async def is_mod(interaction: discord.Interaction) -> bool:
 
     return False
 
-# مرادف للرتبة التكتيكية
 is_tactical = is_mod
 
 async def is_whitelisted(guild_id: int, user_or_role_id: int, target_type: str) -> bool:
@@ -99,6 +84,10 @@ async def is_whitelisted(guild_id: int, user_or_role_id: int, target_type: str) 
         if result.scalars().first() is not None:
             return True
 
-    # فحص رتب الحصانة
-    immunity_role_ids = await get_tier_role_ids(guild_id, "IMMUNITY")
-    return user_or_role_id in immunity_role_ids
+    # فحص رتب الحصانة المسندة في RoleSelector
+    if target_type == "role":
+        immunity_roles = await get_tier_role_ids(guild_id, "IMMUNITY")
+        if user_or_role_id in immunity_roles:
+            return True
+
+    return False

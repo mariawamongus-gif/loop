@@ -12,7 +12,22 @@ from utils.embeds import create_neon_embed, create_success_embed, create_error_e
 from utils.decision_log import log_decision
 
 
+# ─── Helper: RedBot-Style Role Hierarchy Check ────────────────────────────────
+def is_allowed_by_hierarchy(guild: discord.Guild, mod: discord.Member, target: discord.Member) -> tuple[bool, str]:
+    """فحص تدرج الرتب لضمان عدم تجاوز الصلاحيات ومطابقة المعيار القياسي لـ RedBot."""
+    if target.id == guild.owner_id:
+        return False, "لا يمكن تطبيق إجراء إداري على مالك السيرفر."
+    if target.id == mod.id:
+        return False, "لا يمكنك تطبيق إجراء إداري على نفسك."
+    if mod.id != guild.owner_id and target.top_role >= mod.top_role:
+        return False, "لا يمكنك تطبيق إجراء على عضو يملك رتبة مساوية لرتبتك أو أعلى منها."
+    if guild.me and target.top_role >= guild.me.top_role:
+        return False, "رتبة العضو أعلى من رتبة البوت أو مساوية لها في قائمة الرتب."
+    return True, ""
+
+
 # ─── Helper: DM notification ───────────────────────────────────────────────────
+
 async def _dm_notify(user: discord.Member, action: str, reason: str, case_id: int):
     """إرسال إشعار DM للمستخدم عند الإجراء الإداري."""
     try:
@@ -148,6 +163,12 @@ class ModerationCog(commands.Cog):
             await interaction.response.send_message(Strings.ERROR_PERMISSIONS, ephemeral=True)
             return
 
+        if isinstance(user, discord.Member):
+            allowed, err_msg = is_allowed_by_hierarchy(interaction.guild, interaction.user, user)
+            if not allowed:
+                await interaction.response.send_message(f"❌ تعذر تنفيذ الحظر: {err_msg}", ephemeral=True)
+                return
+
         case_id = await self._create_case(
             interaction.guild_id, user.id, interaction.user.id, "BAN", reason
         )
@@ -167,7 +188,7 @@ class ModerationCog(commands.Cog):
             await log_decision(
                 interaction.guild,
                 command=f"/ban {user.id}",
-                check_result="صلاحية الإشراف مؤكدة",
+                check_result="صلاحية الإشراف وتدرج الرتب مؤكدة",
                 execution_step=f"حظر العضو وإنشاء Case #{case_id}",
                 outcome="تم الحظر وتسجيل الحالة بنجاح"
             )
@@ -188,9 +209,16 @@ class ModerationCog(commands.Cog):
             await interaction.response.send_message(Strings.ERROR_PERMISSIONS, ephemeral=True)
             return
 
+        if isinstance(user, discord.Member):
+            allowed, err_msg = is_allowed_by_hierarchy(interaction.guild, interaction.user, user)
+            if not allowed:
+                await interaction.response.send_message(f"❌ تعذر تنفيذ الطرد: {err_msg}", ephemeral=True)
+                return
+
         case_id = await self._create_case(
             interaction.guild_id, user.id, interaction.user.id, "KICK", reason
         )
+
 
         if dm_notify:
             await _dm_notify(user, "KICK", reason, case_id)

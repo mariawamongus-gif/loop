@@ -5,6 +5,7 @@ from sqlalchemy.future import select
 from core.database import AsyncSessionLocal
 from core.models import GuildConfig
 from core.permissions import is_admin
+from core.config_manager import get_cached_guild_config, save_guild_config_field
 from core.strings import Strings
 from utils.embeds import create_neon_embed
 from utils.decision_log import log_decision
@@ -15,7 +16,7 @@ from utils.decision_log import log_decision
 # ═══════════════════════════════════════════════════
 
 class ChannelSetSelect(discord.ui.ChannelSelect):
-    """ChannelSelect تفاعلي يحفظ القناة في DB ويحدث الشاشة الحالية فوراً."""
+    """ChannelSelect تفاعلي يحفظ القناة في الكاش والقرص والـ DB ويحدث الشاشة الحالية فوراً."""
     def __init__(self, db_field: str, placeholder: str, title: str, system_key: str, ch_types=None, row: int = 0):
         super().__init__(
             placeholder=placeholder,
@@ -28,16 +29,7 @@ class ChannelSetSelect(discord.ui.ChannelSelect):
 
     async def callback(self, interaction: discord.Interaction):
         channel = self.values[0]
-        async with AsyncSessionLocal() as session:
-            result = await session.execute(select(GuildConfig).where(GuildConfig.guild_id == interaction.guild_id))
-            config = result.scalars().first()
-            if not config:
-                config = GuildConfig(guild_id=interaction.guild_id)
-                session.add(config)
-            
-            setattr(config, self.db_field, channel.id)
-            await session.commit()
-            await session.refresh(config)
+        config = await save_guild_config_field(interaction.guild_id, self.db_field, channel.id)
 
         # تحديث شاشة الإعدادات الحالية فورياً
         embed = _build_system_embed(self.title, config, self.system_key)
@@ -45,7 +37,7 @@ class ChannelSetSelect(discord.ui.ChannelSelect):
 
 
 class CategorySetSelect(discord.ui.ChannelSelect):
-    """CategorySelect تفاعلي يحفظ الفئة ويحدث الشاشة فوراً."""
+    """CategorySelect تفاعلي يحفظ الفئة في الكاش والـ DB ويحدث الشاشة فوراً."""
     def __init__(self, db_field: str, placeholder: str, title: str, system_key: str, row: int = 0):
         super().__init__(
             placeholder=placeholder,
@@ -58,23 +50,14 @@ class CategorySetSelect(discord.ui.ChannelSelect):
 
     async def callback(self, interaction: discord.Interaction):
         channel = self.values[0]
-        async with AsyncSessionLocal() as session:
-            result = await session.execute(select(GuildConfig).where(GuildConfig.guild_id == interaction.guild_id))
-            config = result.scalars().first()
-            if not config:
-                config = GuildConfig(guild_id=interaction.guild_id)
-                session.add(config)
-
-            setattr(config, self.db_field, channel.id)
-            await session.commit()
-            await session.refresh(config)
+        config = await save_guild_config_field(interaction.guild_id, self.db_field, channel.id)
 
         embed = _build_system_embed(self.title, config, self.system_key)
         await interaction.response.edit_message(embed=embed, view=self.view)
 
 
 class RoleSetSelect(discord.ui.RoleSelect):
-    """RoleSelect تفاعلي يحفظ الرول ويحدث الشاشة فوراً."""
+    """RoleSelect تفاعلي يحفظ الرول في الكاش والـ DB ويحدث الشاشة فوراً."""
     def __init__(self, db_field: str, placeholder: str, title: str, system_key: str, row: int = 0):
         super().__init__(placeholder=placeholder, min_values=1, max_values=1, row=row)
         self.db_field = db_field
@@ -83,19 +66,11 @@ class RoleSetSelect(discord.ui.RoleSelect):
 
     async def callback(self, interaction: discord.Interaction):
         role = self.values[0]
-        async with AsyncSessionLocal() as session:
-            result = await session.execute(select(GuildConfig).where(GuildConfig.guild_id == interaction.guild_id))
-            config = result.scalars().first()
-            if not config:
-                config = GuildConfig(guild_id=interaction.guild_id)
-                session.add(config)
-
-            setattr(config, self.db_field, role.id)
-            await session.commit()
-            await session.refresh(config)
+        config = await save_guild_config_field(interaction.guild_id, self.db_field, role.id)
 
         embed = _build_system_embed(self.title, config, self.system_key)
         await interaction.response.edit_message(embed=embed, view=self.view)
+
 
 
 # ═══════════════════════════════════════════════════
@@ -367,24 +342,17 @@ class TempVoiceSettingsView(discord.ui.View):
 # ═══════════════════════════════════════════════════
 
 async def _toggle_system(interaction: discord.Interaction, guild_id: int, system: str):
-    async with AsyncSessionLocal() as session:
-        result = await session.execute(select(GuildConfig).where(GuildConfig.guild_id == guild_id))
-        config = result.scalars().first()
-        if not config:
-            config = GuildConfig(guild_id=guild_id)
-            session.add(config)
+    config = await get_cached_guild_config(guild_id)
+    if not config:
+        config = GuildConfig(guild_id=guild_id)
 
-        if system == "silent":
-            config.silent_protocol = not config.silent_protocol
-            status = config.silent_protocol
-        else:
-            field_name = f"{system}_enabled"
-            current = getattr(config, field_name, False)
-            setattr(config, field_name, not current)
-            status = not current
-
-        await session.commit()
-        await session.refresh(config)
+    if system == "silent":
+        new_val = not config.silent_protocol
+        config = await save_guild_config_field(guild_id, "silent_protocol", new_val)
+    else:
+        field_name = f"{system}_enabled"
+        current = getattr(config, field_name, False)
+        config = await save_guild_config_field(guild_id, field_name, not current)
 
     # تحديث الشاشة الحالية وإظهار الحالة الجديدة فوراً
     system_titles = {
@@ -444,14 +412,6 @@ class SetupCog(commands.Cog):
             await interaction.response.send_message(Strings.ERROR_PERMISSIONS, ephemeral=True)
             return
 
-        async with AsyncSessionLocal() as session:
-            result = await session.execute(select(GuildConfig).where(GuildConfig.guild_id == interaction.guild_id))
-            config = result.scalars().first()
-            if not config:
-                config = GuildConfig(guild_id=interaction.guild_id)
-                session.add(config)
-                await session.commit()
-
         embed = _build_dashboard_embed(interaction.guild)
         view = SetupDashboardView(interaction.guild_id)
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
@@ -478,22 +438,14 @@ class SetupCog(commands.Cog):
             await interaction.response.send_message("يجب تحديد رول واحد على الأقل (admin_role أو mod_role).", ephemeral=True)
             return
 
-        async with AsyncSessionLocal() as session:
-            result = await session.execute(select(GuildConfig).where(GuildConfig.guild_id == interaction.guild_id))
-            config = result.scalars().first()
-            if not config:
-                config = GuildConfig(guild_id=interaction.guild_id)
-                session.add(config)
+        changes = []
+        if admin_role:
+            await save_guild_config_field(interaction.guild_id, "admin_role_id", admin_role.id)
+            changes.append(f"**رتبة الأدمن:** {admin_role.mention}")
+        if mod_role:
+            await save_guild_config_field(interaction.guild_id, "mod_role_id", mod_role.id)
+            changes.append(f"**رتبة المشرف:** {mod_role.mention}")
 
-            changes = []
-            if admin_role:
-                config.admin_role_id = admin_role.id
-                changes.append(f"**رتبة الأدمن:** {admin_role.mention}")
-            if mod_role:
-                config.mod_role_id = mod_role.id
-                changes.append(f"**رتبة المشرف:** {mod_role.mention}")
-
-            await session.commit()
 
         changes_text = "\n".join(changes)
         embed = create_neon_embed(
